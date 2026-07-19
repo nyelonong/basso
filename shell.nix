@@ -4,6 +4,8 @@
 # run on macOS without Homebrew:
 #   - SDL2        (go-mix/mix backend)
 #   - PortAudio   (audio device I/O)
+#   - sox         (libsox, linked by the transitive go-sox cgo dep)
+#   - pkg-config  (lets cgo locate sox / SDL2 / PortAudio)
 #   - Go          (compiler / toolchain)
 #
 # Enter with:  nix-shell
@@ -20,11 +22,13 @@ pkgs.mkShell {
 
   nativeBuildInputs = [
     pkgs.go
+    pkgs.pkg-config
   ];
 
   buildInputs = [
     pkgs.SDL2
     pkgs.portaudio
+    pkgs.sox
   ];
 
   # Make the native audio library include/lib dirs discoverable to cgo, since
@@ -36,5 +40,6 @@ pkgs.mkShell {
     echo "  go:        $(go version)"
     echo "  SDL2:      ${pkgs.SDL2}"
     echo "  PortAudio: ${pkgs.portaudio}"
+    echo "  sox:       ${pkgs.sox}"
   '';
 }
