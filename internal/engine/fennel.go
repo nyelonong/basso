@@ -4,8 +4,11 @@ import (
 	_ "embed"
 	"fmt"
 	"math/rand"
+	"os"
 	"sync"
+	"time"
 
+	"github.com/fsnotify/fsnotify"
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -15,27 +18,68 @@ import (
 //go:embed fennel/compiler.lua
 var fennelCompilerSource string
 
+// fennelReloadDebounce is how long the fsnotify watcher waits after the
+// last write event on the watched file before reading it and staging its
+// contents as the pending source. This absorbs multi-chunk editor saves
+// (several write events for one logical save) into a single reload.
+const fennelReloadDebounce = 100 * time.Millisecond
+
 // FennelProvider is a PatternProvider that compiles and evaluates a Fennel
 // (Lisp) script through an embedded gopher-lua VM.
 //
 // FennelProvider itself is not safe for concurrent use in general (Next is
 // only ever meant to be called by a single goroutine, per PatternProvider's
 // contract), but the pending-source field below is: a file-backed
-// FennelProvider's watcher goroutine (added in a later change) writes it
-// while Next (called from Engine.Run's goroutine) reads it, so pendingMu
-// guards that one field explicitly.
+// FennelProvider's watcher goroutine writes it while Next (called from
+// Engine.Run's goroutine) reads it, so pendingMu guards that one field
+// explicitly.
 type FennelProvider struct {
 	source string
 
 	pendingMu sync.Mutex
 	pending   *string
+
+	watcher     *fsnotify.Watcher
+	watcherDone chan struct{}
 }
 
 // New constructs a FennelProvider holding source. It does not compile or
 // evaluate source; Next re-evaluates the held source fresh on every call (see
-// Next's doc comment).
+// Next's doc comment). It has no file watcher: it never changes source on
+// its own. Use NewFromFile for that.
 func New(source string) (*FennelProvider, error) {
 	return &FennelProvider{source: source}, nil
+}
+
+// A function on FennelProvider's file-backed path, NewFromFile, reads its
+// initial source from path and starts an fsnotify watcher on it. Writes to
+// path are debounced by fennelReloadDebounce and then staged as the pending
+// source, which Next picks up at the start of its next call — see
+// setPendingSource. Callers must call Close when done with the provider, to
+// stop the watcher goroutine and release its fsnotify handle.
+func NewFromFile(path string) (*FennelProvider, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("fennel: read %s: %w", path, err)
+	}
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return nil, fmt.Errorf("fennel: create watcher: %w", err)
+	}
+	if err := watcher.Add(path); err != nil {
+		watcher.Close()
+		return nil, fmt.Errorf("fennel: watch %s: %w", path, err)
+	}
+
+	fp := &FennelProvider{
+		source:      string(data),
+		watcher:     watcher,
+		watcherDone: make(chan struct{}),
+	}
+	go fp.watchLoop(path)
+
+	return fp, nil
 }
 
 // setPendingSource stages source to be swapped in at the start of the next
@@ -55,6 +99,62 @@ func (fp *FennelProvider) takePendingSource() *string {
 	pending := fp.pending
 	fp.pending = nil
 	return pending
+}
+
+// watchLoop reads path and calls setPendingSource fennelReloadDebounce after
+// the last write event, until watcherDone is closed (by Close) or the
+// watcher's Events channel closes. It runs in its own goroutine, started by
+// NewFromFile.
+func (fp *FennelProvider) watchLoop(path string) {
+	var debounce *time.Timer
+	defer func() {
+		if debounce != nil {
+			debounce.Stop()
+		}
+	}()
+
+	for {
+		select {
+		case <-fp.watcherDone:
+			return
+
+		case event, ok := <-fp.watcher.Events:
+			if !ok {
+				return
+			}
+			if event.Op&(fsnotify.Write|fsnotify.Create) == 0 {
+				continue
+			}
+			if debounce != nil {
+				debounce.Stop()
+			}
+			debounce = time.AfterFunc(fennelReloadDebounce, func() {
+				data, err := os.ReadFile(path)
+				if err != nil {
+					// Transient (e.g. mid-write on some platforms/editors);
+					// the next write event will retry.
+					return
+				}
+				fp.setPendingSource(string(data))
+			})
+
+		case _, ok := <-fp.watcher.Errors:
+			if !ok {
+				return
+			}
+		}
+	}
+}
+
+// Close stops fp's fsnotify watcher goroutine and releases its underlying
+// fsnotify handle. It is a no-op on a FennelProvider constructed via New
+// (which has no watcher). Safe to defer right after NewFromFile.
+func (fp *FennelProvider) Close() error {
+	if fp.watcher == nil {
+		return nil
+	}
+	close(fp.watcherDone)
+	return fp.watcher.Close()
 }
 
 // Next re-evaluates fp's currently held Fennel source in a fresh gopher-lua
