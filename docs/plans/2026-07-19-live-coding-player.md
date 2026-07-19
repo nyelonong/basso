@@ -55,7 +55,8 @@ Copied verbatim from the spec's Constraints section.
 |------|------|--------|----------|
 | 1.1  | 1    | done | `8a5a2eb` — go.mod correct module path + 3 deps; `go build`/`go mod verify` pass |
 | 1.2  | 1    | done | `a41872b` — shell.nix has SDL2/PortAudio/Go/pkg-config/sox; `nix-shell --run 'go version'` passes |
-| 2.1  | 2    | pending | — |
+| 2.1  | 2    | done | `21a0b2c`,`f4e7703`,`e0cabaa` — Hit/PatternProvider/AudioSink/atomixSink/Engine.Run; 3 tests pass; gates green |
+| 2.2  | 2    | in-progress | dispatched docs/briefs/2.2-brief.md @e0cabaa (added after 2.1 review found no real-time pacing) |
 | 3.1  | 3    | pending | — |
 | 4.1  | 4    | pending | — |
 | 4.2  | 4    | pending | — |
@@ -117,7 +118,48 @@ Spec coverage: spec Wave 1 (persistent engine + bar loop, PatternProvider, Hit).
 - [ ] RED+GREEN: `TestEngine_HoldsAudioDeviceOpen`, `TestEngine_SigIntTeardown`
 - [ ] Wave gate: gates green
 
-**Wave 2 gate:** gates green; the three engine tests pass.
+#### Task 2.2: Real-time pacing (Clock seam)
+
+Added after 2.1's review: `Engine.Run` as delivered by 2.1 has no real-time
+pacing — it's an unbounded loop with no wait of any kind between bars, only a
+non-blocking `ctx.Done()` check. Proven empirically: against a non-blocking
+`PatternProvider`, it scheduled 722,433 bars in 50ms (~14M bars/sec). 2.1's
+own tests didn't catch this because their test doubles pace the loop via a
+blocking channel (`notify`), which is a test-only artifact. This breaks two
+downstream waves: wave 4's continuous playback (100% CPU, unbounded growth in
+`mix.v0`'s fire queue instead of audible music) and wave 5's hot reload
+("reloads apply only at the next bar boundary" is impossible if every future
+bar is already scheduled instantly).
+
+**Files:** Edit `internal/engine/engine.go`, `internal/engine/engine_test.go`
+**Write-scope:** `internal/engine/engine.go`, `internal/engine/engine_test.go`
+**Consumes:** `Engine`, `AudioSink`, `PatternProvider`, `Hit` from 2.1
+**Produces:** `Engine.Run` paces itself against real bar boundaries (waits,
+context-aware, for each bar's duration to actually elapse — relative to a
+reference time captured at `Run` entry — before calling `provider.Next` for
+the next bar) via an injectable clock seam, so tests stay fast/deterministic
+without real `time.Sleep` — used by 4.1, 4.2, 5.1
+**Seams:** a `Clock` (or equivalent) abstraction — real implementation backs
+`Run`'s default construction path (no API break for future callers using
+`NewEngine(sink)`); a fake/manual clock in the test drives bar-by-bar
+progression without wall-clock waits
+**Tests:** existing three (`TestEngine_SchedulesOnContinuousClock`,
+`TestEngine_HoldsAudioDeviceOpen`, `TestEngine_SigIntTeardown`) continue to
+pass, updated as needed for the new seam; new test proves `Run` does not call
+`provider.Next` for bar N+1 until the fake clock has advanced past bar N's
+duration, and that ctx cancellation during the wait returns promptly (not
+after the full remaining wait)
+**Model tier:** standard
+- [ ] RED: write the new pacing test against a fake clock — fails (no clock seam exists yet)
+- [ ] Add the `Clock` seam; wire a real-clock default into `Engine`'s existing constructor path
+- [ ] Implement the context-aware wait in `Run` between bars
+- [ ] GREEN: new test passes
+- [ ] Update the three existing tests for the new seam; confirm they still pass and still run in well under 1s total (no reliance on real sleeps)
+- [ ] Wave gate: gates green
+
+**Wave 2 gate:** gates green; all engine tests (2.1's three plus 2.2's pacing
+test) pass; `Engine.Run` demonstrably paces against real time (not just
+against a blocking test double).
 
 ---
 
