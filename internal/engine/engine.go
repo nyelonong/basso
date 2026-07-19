@@ -50,15 +50,22 @@ func NewEngine(sink AudioSink) *Engine {
 // Run opens the audio device once, then asks provider for each bar's hits,
 // in order starting at bar 0, and schedules them through the AudioSink on a
 // continuous clock: each bar's start is the previous bar's start plus that
-// bar's duration. The device stays open across bars. Run returns the error
-// provider.Next produces once the pattern ends, and always tears the device
-// down exactly once before returning.
+// bar's duration. The device stays open across bars. Run returns when
+// ctx is cancelled, or the error provider.Next produces once the pattern
+// ends; either way it always tears the device down exactly once before
+// returning.
 func (e *Engine) Run(ctx context.Context, provider PatternProvider) error {
 	e.sink.Start()
 	defer e.sink.Teardown()
 
 	var barStart time.Duration
 	for bar := 0; ; bar++ {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		hits, bpm, stepsPerBar, err := provider.Next(bar)
 		if err != nil {
 			return err

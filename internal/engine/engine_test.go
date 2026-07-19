@@ -193,3 +193,41 @@ drain:
 		t.Errorf("teardownCalls (after Run returned) = %d, want 1", finalTeardown)
 	}
 }
+
+func TestEngine_SigIntTeardown(t *testing.T) {
+	notify := make(chan int)
+	// stopAfter left at 0: the provider never stops the pattern on its
+	// own, so the only thing that can end Run is ctx cancellation.
+	provider := &loopingProvider{bpm: 120, stepsPerBar: 4, notify: notify}
+	sink := &fakeSink{}
+	engine := NewEngine(sink)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- engine.Run(ctx, provider) }()
+
+	<-notify // Run has opened the device and requested at least one bar.
+
+	cancel()
+
+	// Run only notices cancellation at the top of its loop, between
+	// Next calls; keep draining any bar already in flight so it can get
+	// there and return.
+	timeout := time.After(2 * time.Second)
+drain:
+	for {
+		select {
+		case <-notify:
+		case <-done:
+			break drain
+		case <-timeout:
+			t.Fatal("Run did not return after context cancellation")
+		}
+	}
+
+	sink.mu.Lock()
+	defer sink.mu.Unlock()
+	if sink.teardownCalls != 1 {
+		t.Errorf("teardownCalls = %d, want 1", sink.teardownCalls)
+	}
+}
