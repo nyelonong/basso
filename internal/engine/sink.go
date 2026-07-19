@@ -122,20 +122,31 @@ func splitEnvelope(totalN int, attack, maxRelease time.Duration, releaseFraction
 	return attackN, releaseN
 }
 
-// synthesizeNote builds a finite streamer for a synthesized bass note at
-// freq, sustaining for exactly deviceSampleRate.N(sustain) samples: a
-// sawtooth tone (generators.SawtoothTone — an infinite oscillator, hence the
-// cut), enveloped with a short attack and release (effects.Transition) so it
-// doesn't click at the start or end. No caching (unlike sampleCache for
-// WAVs): synthesizing a tone is cheap pure computation, not disk I/O.
-func synthesizeNote(freq float64, sustain time.Duration) (beep.Streamer, error) {
+// brassAttack is brass's slower attack ramp than bass's punchy stab — a
+// "swell," the way a brass player's air pressure builds.
+const brassAttack = 40 * time.Millisecond
+
+// brassMaxRelease is brass's longer release cap than bass's, capped the
+// same way bassMaxRelease is (see splitEnvelope).
+const brassMaxRelease = 100 * time.Millisecond
+
+// synthesizeSawtoothNote builds a finite streamer for a sawtooth-oscillator
+// note at freq, sustaining for exactly deviceSampleRate.N(sustain) samples:
+// generators.SawtoothTone (an infinite oscillator, hence the cut) enveloped
+// with attack/release (effects.Transition, shaped by splitEnvelope) so it
+// doesn't click at the start or end. synthesizeNote (bass) and
+// synthesizeBrass are both thin wrappers over this, differing only in their
+// attack/maxRelease/releaseFraction — the oscillator and envelope assembly
+// are shared, not duplicated. No caching (unlike sampleCache for WAVs):
+// synthesizing a tone is cheap pure computation, not disk I/O.
+func synthesizeSawtoothNote(freq float64, sustain time.Duration, attack, maxRelease time.Duration, releaseFraction float64) (beep.Streamer, error) {
 	tone, err := generators.SawtoothTone(deviceSampleRate, freq)
 	if err != nil {
-		return nil, fmt.Errorf("synthesizeNote: %w", err)
+		return nil, fmt.Errorf("synthesizeSawtoothNote: %w", err)
 	}
 
 	totalN := deviceSampleRate.N(sustain)
-	attackN, releaseN := splitEnvelope(totalN, bassAttack, bassMaxRelease, bassReleaseFraction)
+	attackN, releaseN := splitEnvelope(totalN, attack, maxRelease, releaseFraction)
 	sustainN := totalN - attackN - releaseN
 
 	var segments []beep.Streamer
@@ -149,6 +160,20 @@ func synthesizeNote(freq float64, sustain time.Duration) (beep.Streamer, error) 
 		segments = append(segments, effects.Transition(beep.Take(releaseN, tone), releaseN, 1, 0, effects.TransitionLinear))
 	}
 	return beep.Seq(segments...), nil
+}
+
+// synthesizeNote builds a synthesized bass note: same-shaped envelope as
+// synthesizeBrass, but bass's punchier, quicker attack/release.
+func synthesizeNote(freq float64, sustain time.Duration) (beep.Streamer, error) {
+	return synthesizeSawtoothNote(freq, sustain, bassAttack, bassMaxRelease, bassReleaseFraction)
+}
+
+// synthesizeBrass builds a synthesized brass note: the same sawtooth
+// oscillator as bass (its bright, buzzy harmonic content is what reads as
+// "brass" without a filter), but a slower attack ("swell") and longer
+// release than bass's punchy stab.
+func synthesizeBrass(freq float64, sustain time.Duration) (beep.Streamer, error) {
+	return synthesizeSawtoothNote(freq, sustain, brassAttack, brassMaxRelease, bassReleaseFraction)
 }
 
 // pluckMaxRelease and pluckReleaseFraction shape pluck's tail-only release

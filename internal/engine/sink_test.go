@@ -196,3 +196,34 @@ func TestKarplusStrongStreamer_Decays(t *testing.T) {
 		t.Errorf("tailAvg = %.5f, headAvg = %.5f (ratio %.3f) — want tail meaningfully quieter than head (ratio < 0.7)", tailAvg, headAvg, tailAvg/headAvg)
 	}
 }
+
+// TestSynthesizeBrass_SampleCount mirrors TestSynthesizeNote_SampleCount:
+// the brass path (SawtoothTone, cut to length, enveloped with brass's
+// slower attack/longer release) must still produce exactly
+// deviceSampleRate.N(sustain) samples, including for a very short note
+// where the attack+release envelope must clamp to fit.
+func TestSynthesizeBrass_SampleCount(t *testing.T) {
+	tests := []struct {
+		name    string
+		sustain time.Duration
+	}{
+		{name: "normal note", sustain: 250 * time.Millisecond},
+		{name: "long note", sustain: 2 * time.Second},
+		{name: "very short note", sustain: 5 * time.Millisecond},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			streamer, err := synthesizeBrass(110.0, tt.sustain)
+			if err != nil {
+				t.Fatalf("synthesizeBrass() error = %v, want nil", err)
+			}
+
+			want := deviceSampleRate.N(tt.sustain)
+			got := countSamples(streamer)
+			if got != want {
+				t.Errorf("countSamples() = %d, want %d", got, want)
+			}
+		})
+	}
+}
