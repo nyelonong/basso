@@ -34,10 +34,10 @@ func newFennelProvider(path string) (closablePatternProvider, error) {
 	return engine.NewFromFile(path)
 }
 
-// newAtomixSink adapts engine.NewAtomixSink to a zero-arg constructor, so
-// run() can also take a stub in place of it.
-func newAtomixSink() engine.AudioSink {
-	return engine.NewAtomixSink()
+// newBeepSink adapts engine.NewBeepSink to a zero-arg constructor, so run()
+// can also take a stub in place of it.
+func newBeepSink() engine.AudioSink {
+	return engine.NewBeepSink("sound/808/")
 }
 
 // progressProvider decorates a PatternProvider, printing the bar number and
@@ -112,7 +112,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := run(ctx, os.Args[1:], os.Stdout, newFennelProvider, newAtomixSink); err != nil {
+	if err := run(ctx, os.Args[1:], os.Stdout, newFennelProvider, newBeepSink); err != nil {
 		fmt.Fprintln(os.Stderr, "basso:", err)
 		os.Exit(1)
 	}
