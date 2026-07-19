@@ -57,7 +57,7 @@ Copied verbatim from the spec's Constraints section.
 | 1.2  | 1    | done | `a41872b` — shell.nix has SDL2/PortAudio/Go/pkg-config/sox; `nix-shell --run 'go version'` passes |
 | 2.1  | 2    | done | `21a0b2c`,`f4e7703`,`e0cabaa` — Hit/PatternProvider/AudioSink/atomixSink/Engine.Run; 3 tests pass; gates green |
 | 2.2  | 2    | done | `466d7a6`,`e86c396`,`0a1c320` — clock seam, ctx-aware bar wait; 5 tests pass in 0.09s; gates green; re-verified empirically (real clock: 1 fire scheduled in 602ms against a non-blocking provider, was 722k/50ms before the fix) |
-| 3.1  | 3    | in-progress | dispatched docs/briefs/3.1-brief.md @3ee96ad |
+| 3.1  | 3    | done | `3ad5315`,`2b294cd` — StaticProvider transcribes m001 exactly; 7 total engine tests pass; gates green |
 | 4.1  | 4    | pending | — |
 | 4.2  | 4    | pending | — |
 | 5.1  | 5    | pending | — |
@@ -187,7 +187,11 @@ Spec coverage: spec Wave 1 (StaticProvider reproducing `m001`).
 - [ ] RED+GREEN: `TestStaticProvider_Tempo`
 - [ ] Wave gate: gates green
 
-**Wave 3 gate:** gates green; static provider tests pass.
+**Wave 3 gate — CLOSED @2b294cd:** `gofmt -l .` clean; `go vet ./...` exit 0;
+`go build ./...` exit 0; `go test ./...` exit 0, all 7 engine tests pass in
+0.26s. Diff sanity check (mechanical task): data matches the brief's table
+exactly, in order; tests check sample/step/velocity exactly and bound pan to
+`[-1,1]` as instructed, not an exact value.
 
 ---
 
