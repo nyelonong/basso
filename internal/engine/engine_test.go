@@ -70,21 +70,31 @@ func (c *fakeClock) Now() time.Time {
 	return c.now
 }
 
-func (c *fakeClock) WaitUntil(t time.Time) error {
+func (c *fakeClock) WaitUntil(ctx context.Context, t time.Time) error {
 	c.mu.Lock()
 	if c.instant || !t.After(c.now) {
 		c.now = t
 		c.mu.Unlock()
 		c.signal(t)
-		return nil
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			return nil
+		}
 	}
 	release := make(chan struct{})
 	c.waiters = append(c.waiters, fakeClockWaiter{deadline: t, release: release})
 	c.mu.Unlock()
 
 	c.signal(t)
-	<-release
-	return nil
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-release:
+		return nil
+	}
 }
 
 func (c *fakeClock) signal(t time.Time) {
@@ -268,6 +278,52 @@ func TestEngine_PacesBarsAgainstClock(t *testing.T) {
 		}
 	case <-time.After(50 * time.Millisecond):
 		t.Fatal("Run did not return after the provider exhausted the pattern")
+	}
+}
+
+// TestEngine_ContextCancelDuringBarWaitReturnsPromptly proves that
+// cancelling ctx while Run is waiting out a bar's duration makes Run return
+// promptly, instead of waiting out the rest of the bar. The fake clock is
+// never advanced, so the only thing that can end Run here is cancellation.
+func TestEngine_ContextCancelDuringBarWaitReturnsPromptly(t *testing.T) {
+	notify := make(chan int)
+	waited := make(chan time.Time)
+	clk := newFakeClock(false)
+	clk.waited = waited
+
+	// stopAfter left at 0: the provider never stops the pattern on its
+	// own, so the only thing that can end Run is ctx cancellation.
+	provider := &loopingProvider{bpm: 120, stepsPerBar: 4, notify: notify}
+	sink := &fakeSink{}
+	engine := &Engine{sink: sink, clock: clk}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- engine.Run(ctx, provider) }()
+
+	<-notify // bar 0 requested.
+
+	select {
+	case <-waited: // Run is now blocked waiting out bar 0's duration.
+	case <-time.After(40 * time.Millisecond):
+		t.Fatal("Run did not reach the bar wait after scheduling bar 0")
+	}
+
+	cancel()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Run() error = %v, want context.Canceled", err)
+		}
+	case <-time.After(40 * time.Millisecond):
+		t.Fatal("Run did not return promptly after ctx cancellation during the bar wait")
+	}
+
+	sink.mu.Lock()
+	defer sink.mu.Unlock()
+	if sink.teardownCalls != 1 {
+		t.Errorf("teardownCalls = %d, want 1", sink.teardownCalls)
 	}
 }
 

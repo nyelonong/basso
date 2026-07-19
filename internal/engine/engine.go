@@ -44,8 +44,9 @@ type AudioSink interface {
 type clock interface {
 	// Now returns the current time.
 	Now() time.Time
-	// WaitUntil blocks until t is reached.
-	WaitUntil(t time.Time) error
+	// WaitUntil blocks until t is reached or ctx is cancelled, whichever
+	// comes first, returning ctx.Err() in the latter case.
+	WaitUntil(ctx context.Context, t time.Time) error
 }
 
 // realClock paces Run in actual wall-clock time.
@@ -53,13 +54,24 @@ type realClock struct{}
 
 func (realClock) Now() time.Time { return time.Now() }
 
-func (realClock) WaitUntil(t time.Time) error {
+func (realClock) WaitUntil(ctx context.Context, t time.Time) error {
 	d := time.Until(t)
 	if d <= 0 {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			return nil
+		}
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
 		return nil
 	}
-	<-time.After(d)
-	return nil
 }
 
 // Engine plays a pattern continuously, bar by bar, through an AudioSink.
@@ -106,7 +118,7 @@ func (e *Engine) Run(ctx context.Context, provider PatternProvider) error {
 
 		barStart += time.Duration(stepsPerBar) * stepDuration
 
-		if err := e.clock.WaitUntil(reference.Add(barStart)); err != nil {
+		if err := e.clock.WaitUntil(ctx, reference.Add(barStart)); err != nil {
 			return err
 		}
 	}
