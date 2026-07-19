@@ -56,7 +56,7 @@ Copied verbatim from the spec's Constraints section.
 | 1.1  | 1    | done | `8a5a2eb` — go.mod correct module path + 3 deps; `go build`/`go mod verify` pass |
 | 1.2  | 1    | done | `a41872b` — shell.nix has SDL2/PortAudio/Go/pkg-config/sox; `nix-shell --run 'go version'` passes |
 | 2.1  | 2    | done | `21a0b2c`,`f4e7703`,`e0cabaa` — Hit/PatternProvider/AudioSink/atomixSink/Engine.Run; 3 tests pass; gates green |
-| 2.2  | 2    | in-progress | dispatched docs/briefs/2.2-brief.md @e0cabaa (added after 2.1 review found no real-time pacing) |
+| 2.2  | 2    | done | `466d7a6`,`e86c396`,`0a1c320` — clock seam, ctx-aware bar wait; 5 tests pass in 0.09s; gates green; re-verified empirically (real clock: 1 fire scheduled in 602ms against a non-blocking provider, was 722k/50ms before the fix) |
 | 3.1  | 3    | pending | — |
 | 4.1  | 4    | pending | — |
 | 4.2  | 4    | pending | — |
@@ -157,9 +157,15 @@ after the full remaining wait)
 - [ ] Update the three existing tests for the new seam; confirm they still pass and still run in well under 1s total (no reliance on real sleeps)
 - [ ] Wave gate: gates green
 
-**Wave 2 gate:** gates green; all engine tests (2.1's three plus 2.2's pacing
-test) pass; `Engine.Run` demonstrably paces against real time (not just
-against a blocking test double).
+**Wave 2 gate — CLOSED @0a1c320:** `gofmt -l .` clean; `go vet ./...` exit 0;
+`go build ./...` exit 0; `go test ./...` exit 0; all 5 engine tests pass in
+0.09s. `Engine.Run` demonstrably paces against real time, not just a blocking
+test double — re-verified with a real-clock scratch check (1 fire scheduled
+in 602ms against a non-blocking provider at 120bpm/16steps, vs. 722,433
+fires/50ms before 2.2's fix). Refactor pass: reviewed `engine_test.go` for
+duplication (the two drain loops in `TestEngine_HoldsAudioDeviceOpen`/
+`TestEngine_SigIntTeardown` are near-identical); left as-is — extracting a
+helper for two ~10-line loops isn't worth the indirection at this size.
 
 ---
 
