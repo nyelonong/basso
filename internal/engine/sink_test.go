@@ -134,3 +134,65 @@ func TestSynthesizeNote_RejectsAboveNyquist(t *testing.T) {
 		t.Fatalf("synthesizeNote() error = nil, want error for a frequency at Nyquist")
 	}
 }
+
+// TestKarplusStrongStreamer_SampleCount verifies that streaming a
+// karplusStrongStreamer to exhaustion (same countSamples technique
+// TestSynthesizeNote_SampleCount uses) produces exactly numSamples samples,
+// for a range of lengths including one shorter than the delay-line buffer
+// itself.
+func TestKarplusStrongStreamer_SampleCount(t *testing.T) {
+	tests := []struct {
+		name       string
+		freq       float64
+		numSamples int
+	}{
+		{name: "normal note", freq: 110.0, numSamples: deviceSampleRate.N(250 * time.Millisecond)},
+		{name: "long note", freq: 220.0, numSamples: deviceSampleRate.N(2 * time.Second)},
+		{name: "shorter than the delay line", freq: 110.0, numSamples: 5},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newKarplusStrongStreamer(deviceSampleRate, tt.freq, tt.numSamples)
+
+			got := countSamples(s)
+			if got != tt.numSamples {
+				t.Errorf("countSamples() = %d, want %d", got, tt.numSamples)
+			}
+		})
+	}
+}
+
+// TestKarplusStrongStreamer_Decays is a real correctness check on the
+// feedback loop, not just "did it run": it streams a long note and compares
+// the average absolute sample value over the first ~10% of samples against
+// the last ~10%. A correct implementation's tail is meaningfully quieter
+// than its head (proven empirically: ratio ~0.25-0.30 for this freq/
+// duration). A broken feedback loop — e.g. the decayed value never written
+// back to the buffer, so the same noise loops unchanged — stays at a ratio
+// of ~1.0, which this test's threshold (0.7) rejects.
+func TestKarplusStrongStreamer_Decays(t *testing.T) {
+	numSamples := deviceSampleRate.N(500 * time.Millisecond)
+	s := newKarplusStrongStreamer(deviceSampleRate, 110.0, numSamples)
+
+	buf := make([][2]float64, numSamples)
+	n, ok := s.Stream(buf)
+	if n != numSamples || !ok {
+		t.Fatalf("Stream() = (%d, %v), want (%d, true)", n, ok, numSamples)
+	}
+
+	tenPct := numSamples / 10
+	var headSum, tailSum float64
+	for i := 0; i < tenPct; i++ {
+		headSum += math.Abs(buf[i][0])
+	}
+	for i := numSamples - tenPct; i < numSamples; i++ {
+		tailSum += math.Abs(buf[i][0])
+	}
+	headAvg := headSum / float64(tenPct)
+	tailAvg := tailSum / float64(tenPct)
+
+	if tailAvg >= headAvg*0.7 {
+		t.Errorf("tailAvg = %.5f, headAvg = %.5f (ratio %.3f) — want tail meaningfully quieter than head (ratio < 0.7)", tailAvg, headAvg, tailAvg/headAvg)
+	}
+}

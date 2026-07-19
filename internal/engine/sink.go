@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sync"
@@ -141,6 +142,84 @@ func synthesizeNote(freq float64, sustain time.Duration) (beep.Streamer, error) 
 	if attackN > 0 {
 		segments = append(segments, effects.Transition(beep.Take(attackN, tone), attackN, 0, 1, effects.TransitionLinear))
 	}
+	if sustainN > 0 {
+		segments = append(segments, beep.Take(sustainN, tone))
+	}
+	if releaseN > 0 {
+		segments = append(segments, effects.Transition(beep.Take(releaseN, tone), releaseN, 1, 0, effects.TransitionLinear))
+	}
+	return beep.Seq(segments...), nil
+}
+
+// pluckMaxRelease and pluckReleaseFraction shape pluck's tail-only release
+// fade (no attack ramp — see newKarplusStrongStreamer's doc comment), capped
+// the same way splitEnvelope caps bass/brass releases.
+const pluckMaxRelease = 12 * time.Millisecond
+
+// karplusStrongStreamer synthesizes a plucked-string tone via Karplus-Strong:
+// a circular delay-line buffer of length round(sampleRate/freq) samples,
+// seeded with white noise. Each sample read from the buffer is immediately
+// replaced by decay * the average of itself and its neighbor (a simple
+// 2-tap lowpass + attenuation) before advancing — high harmonics decay
+// faster than the fundamental, producing the characteristic plucked-string
+// timbre: a bright noisy onset settling into a decaying tone at freq.
+type karplusStrongStreamer struct {
+	buf       []float64
+	pos       int
+	decay     float64
+	remaining int
+}
+
+// newKarplusStrongStreamer returns a karplusStrongStreamer tuned to freq,
+// producing exactly numSamples samples before exhausting. n is clamped to a
+// minimum of 2 to guard against a degenerate buffer at very high
+// frequencies.
+func newKarplusStrongStreamer(sr beep.SampleRate, freq float64, numSamples int) beep.Streamer {
+	n := int(math.Round(float64(sr) / freq))
+	if n < 2 {
+		n = 2 // guard against a degenerate buffer at very high frequencies
+	}
+	buf := make([]float64, n)
+	for i := range buf {
+		buf[i] = rand.Float64()*2 - 1
+	}
+	return &karplusStrongStreamer{buf: buf, decay: 0.996, remaining: numSamples}
+}
+
+func (k *karplusStrongStreamer) Stream(samples [][2]float64) (n int, ok bool) {
+	for i := range samples {
+		if k.remaining <= 0 {
+			return i, i > 0
+		}
+		v := k.buf[k.pos]
+		next := k.buf[(k.pos+1)%len(k.buf)]
+		k.buf[k.pos] = k.decay * 0.5 * (v + next)
+		samples[i][0] = v
+		samples[i][1] = v
+		k.pos = (k.pos + 1) % len(k.buf)
+		k.remaining--
+	}
+	return len(samples), true
+}
+
+func (k *karplusStrongStreamer) Err() error { return nil }
+
+// synthesizePluck builds a finite streamer for a plucked-string note at
+// freq, sustaining for exactly deviceSampleRate.N(sustain) samples: Karplus-
+// Strong synthesis (karplusStrongStreamer), enveloped with a short release
+// fade only — no attack ramp, since the noisy onset karplusStrongStreamer
+// already produces is the pluck's attack character; softening it would be
+// wrong. Reuses splitEnvelope for the release-length clamping (attack
+// passed as 0), the same effects.Transition/beep.Take/beep.Seq composition
+// synthesizeNote and synthesizeBrass use.
+func synthesizePluck(freq float64, sustain time.Duration) (beep.Streamer, error) {
+	totalN := deviceSampleRate.N(sustain)
+	tone := newKarplusStrongStreamer(deviceSampleRate, freq, totalN)
+
+	_, releaseN := splitEnvelope(totalN, 0, pluckMaxRelease, bassReleaseFraction)
+	sustainN := totalN - releaseN
+
+	var segments []beep.Streamer
 	if sustainN > 0 {
 		segments = append(segments, beep.Take(sustainN, tone))
 	}
