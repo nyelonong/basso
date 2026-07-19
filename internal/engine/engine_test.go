@@ -10,8 +10,10 @@ import (
 
 // fakeSink records AudioSink calls instead of touching a real audio device.
 type fakeSink struct {
-	mu    sync.Mutex
-	fires []recordedFire
+	mu            sync.Mutex
+	fires         []recordedFire
+	startCalls    int
+	teardownCalls int
 }
 
 type recordedFire struct {
@@ -26,6 +28,18 @@ func (f *fakeSink) SetFire(source string, begin, sustain time.Duration, volume, 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.fires = append(f.fires, recordedFire{source: source, begin: begin, sustain: sustain, volume: volume, pan: pan})
+}
+
+func (f *fakeSink) Start() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.startCalls++
+}
+
+func (f *fakeSink) Teardown() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.teardownCalls++
 }
 
 // errPatternExhausted is returned by test-double PatternProviders once their
@@ -52,6 +66,29 @@ func (p *scriptedProvider) Next(bar int) ([]Hit, int, int, error) {
 	}
 	b := p.bars[bar]
 	return b.hits, b.bpm, b.stepsPerBar, nil
+}
+
+// loopingProvider is a PatternProvider test double that returns an empty
+// bar forever (bpm/stepsPerBar fixed), sending bar on notify (blocking) on
+// every call so a test can single-step Engine.Run, running in another
+// goroutine, one bar at a time. If stopAfter > 0, it returns
+// errPatternExhausted once bar reaches stopAfter, so a test doesn't have to
+// rely on context cancellation to end the loop.
+type loopingProvider struct {
+	bpm         int
+	stepsPerBar int
+	notify      chan int
+	stopAfter   int
+}
+
+func (p *loopingProvider) Next(bar int) ([]Hit, int, int, error) {
+	if p.notify != nil {
+		p.notify <- bar
+	}
+	if p.stopAfter > 0 && bar >= p.stopAfter {
+		return nil, 0, 0, errPatternExhausted
+	}
+	return nil, p.bpm, p.stepsPerBar, nil
 }
 
 func TestEngine_SchedulesOnContinuousClock(t *testing.T) {
@@ -101,5 +138,58 @@ func TestEngine_SchedulesOnContinuousClock(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("fire[%d] = %+v, want %+v", i, got[i], want[i])
 		}
+	}
+}
+
+func TestEngine_HoldsAudioDeviceOpen(t *testing.T) {
+	notify := make(chan int)
+	provider := &loopingProvider{bpm: 120, stepsPerBar: 4, notify: notify, stopAfter: 5}
+	sink := &fakeSink{}
+	engine := NewEngine(sink)
+
+	done := make(chan error, 1)
+	go func() { done <- engine.Run(context.Background(), provider) }()
+
+	// Next(bar) blocks on notify, so receiving 3 times here guarantees Run
+	// is paused partway through the pattern (not finished) when we inspect
+	// sink below.
+	for i := 0; i < 3; i++ {
+		<-notify
+	}
+
+	sink.mu.Lock()
+	startCalls := sink.startCalls
+	teardownCalls := sink.teardownCalls
+	sink.mu.Unlock()
+
+	if startCalls != 1 {
+		t.Errorf("startCalls (mid-run) = %d, want 1", startCalls)
+	}
+	if teardownCalls != 0 {
+		t.Errorf("teardownCalls (mid-run) = %d, want 0", teardownCalls)
+	}
+
+	// Drain the remaining bars so Run can reach stopAfter and return.
+	timeout := time.After(2 * time.Second)
+drain:
+	for {
+		select {
+		case <-notify:
+		case <-done:
+			break drain
+		case <-timeout:
+			t.Fatal("Run did not return after provider stopped the pattern")
+		}
+	}
+
+	sink.mu.Lock()
+	finalStart, finalTeardown := sink.startCalls, sink.teardownCalls
+	sink.mu.Unlock()
+
+	if finalStart != 1 {
+		t.Errorf("startCalls (after Run returned) = %d, want 1", finalStart)
+	}
+	if finalTeardown != 1 {
+		t.Errorf("teardownCalls (after Run returned) = %d, want 1", finalTeardown)
 	}
 }

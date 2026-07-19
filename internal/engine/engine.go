@@ -25,10 +25,16 @@ type PatternProvider interface {
 // AudioSink is the audio device seam. The real implementation (atomixSink,
 // in sink.go) wraps gopkg.in/mix.v0; tests use a fake.
 type AudioSink interface {
+	// Start opens the audio device and begins the playback clock.
+	Start()
+
 	// SetFire schedules source to play at begin (an offset from the sink's
 	// playback start reference), sustaining for sustain, at the given
 	// volume and pan.
 	SetFire(source string, begin, sustain time.Duration, volume, pan float64)
+
+	// Teardown closes the audio device and releases its resources.
+	Teardown()
 }
 
 // Engine plays a pattern continuously, bar by bar, through an AudioSink.
@@ -41,11 +47,16 @@ func NewEngine(sink AudioSink) *Engine {
 	return &Engine{sink: sink}
 }
 
-// Run asks provider for each bar's hits, in order starting at bar 0, and
-// schedules them through the AudioSink on a continuous clock: each bar's
-// start is the previous bar's start plus that bar's duration. Run returns
-// the error provider.Next produces once the pattern ends.
+// Run opens the audio device once, then asks provider for each bar's hits,
+// in order starting at bar 0, and schedules them through the AudioSink on a
+// continuous clock: each bar's start is the previous bar's start plus that
+// bar's duration. The device stays open across bars. Run returns the error
+// provider.Next produces once the pattern ends, and always tears the device
+// down exactly once before returning.
 func (e *Engine) Run(ctx context.Context, provider PatternProvider) error {
+	e.sink.Start()
+	defer e.sink.Teardown()
+
 	var barStart time.Duration
 	for bar := 0; ; bar++ {
 		hits, bpm, stepsPerBar, err := provider.Next(bar)
