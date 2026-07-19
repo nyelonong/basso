@@ -168,6 +168,39 @@ pattern
 	}
 }
 
+// TestFennelProvider_NoteHitDefaultsPanToCenter verifies that a :note hit
+// omitting :pan defaults to exactly 0 (centered) — not the random pan
+// :sample hits get when they omit :pan. Standard mixing practice centers
+// bass; random pan also made an already-quiet, low-frequency note easy to
+// lose when it happened to land near a hard-left/hard-right extreme (root
+// cause of a real "sometimes the bass isn't heard" report).
+func TestFennelProvider_NoteHitDefaultsPanToCenter(t *testing.T) {
+	source := `
+(fn pattern [bar]
+  [{:step 0 :note "A2"}])
+
+pattern
+`
+
+	provider, err := New(source)
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+
+	for bar := 0; bar < 20; bar++ {
+		hits, _, _, err := provider.Next(bar)
+		if err != nil {
+			t.Fatalf("Next(%d) error = %v, want nil", bar, err)
+		}
+		if len(hits) != 1 {
+			t.Fatalf("Next(%d): len(hits) = %d, want 1", bar, len(hits))
+		}
+		if hits[0].Pan != 0 {
+			t.Fatalf("Next(%d): Pan = %v, want exactly 0", bar, hits[0].Pan)
+		}
+	}
+}
+
 // TestFennelProvider_HitRequiresExactlyOneOfSampleOrNote verifies that a hit
 // table with both :sample and :note, or with neither, makes Next return an
 // error rather than a malformed Hit.

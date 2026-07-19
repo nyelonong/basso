@@ -232,9 +232,20 @@ func (fp *FennelProvider) Next(bar int) ([]Hit, int, int, error) {
 		}
 
 		pan := row.RawGetString("pan")
-		panValue := rand.Float64()*2 - 1 // default: random in [-1,1], same precedent as StaticProvider (3.1)
-		if pan != lua.LNil {
+		var panValue float64
+		switch {
+		case pan != lua.LNil:
 			panValue = float64(lua.LVAsNumber(pan))
+		case note != lua.LNil:
+			// :note hits default to centered pan, not random: bass is
+			// conventionally centered, and a low, often-quiet synthesized
+			// note is easy to lose when random pan happens to land near a
+			// hard-left/hard-right extreme.
+			panValue = 0
+		default:
+			// :sample hits default to random in [-1,1], same precedent as
+			// StaticProvider (3.1) and the original m001 per-fire pan.
+			panValue = rand.Float64()*2 - 1
 		}
 
 		velocity := row.RawGetString("velocity")
