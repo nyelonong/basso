@@ -60,7 +60,7 @@ Copied verbatim from the spec's Constraints section.
 | 3.1  | 3    | done | `3ad5315`,`2b294cd` — StaticProvider transcribes m001 exactly; 7 total engine tests pass; gates green |
 | 4.1  | 4    | done | `c6ba736`,`201306d` — sink.go configures real mixer+path+start time; cmd/basso wired to Engine+StaticProvider+SIGINT; smoke green (device configures, ~105% CPU while running, clean SIGINT exit) |
 | 4.2  | 4    | done | `44f12c4`+6 more — vendored Fennel 1.6.1 runs directly on gopher-lua, no fallback needed; 3 tests pass; reproduces StaticProvider's m001 output exactly |
-| 5.1  | 5    | pending | — |
+| 5.1  | 5    | in-progress | dispatched docs/briefs/5.1-brief.md @ff6ffb8 |
 | 6.1  | 6    | pending | — |
 
 ## Waves
