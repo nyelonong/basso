@@ -49,6 +49,15 @@ func (fp *FennelProvider) Next(bar int) ([]Hit, int, int, error) {
 	bpm := 120
 	stepsPerBar := 16
 
+	L.SetGlobal("bpm", L.NewFunction(func(l *lua.LState) int {
+		bpm = int(l.CheckNumber(1))
+		return 0
+	}))
+	L.SetGlobal("steps", L.NewFunction(func(l *lua.LState) int {
+		stepsPerBar = int(l.CheckNumber(1))
+		return 0
+	}))
+
 	evalFn := fennelMod.RawGetString("eval")
 	L.Push(evalFn)
 	L.Push(lua.LString(fp.source))
