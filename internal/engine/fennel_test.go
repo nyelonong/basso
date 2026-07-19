@@ -101,3 +101,34 @@ pattern
 		t.Errorf("hits[1].Velocity = %v, want 1.0", hits[1].Velocity)
 	}
 }
+
+// TestFennelProvider_TempoFunctions verifies that a script calling (bpm 140)
+// and (steps 12) makes Next return bpm == 140 and stepsPerBar == 12.
+func TestFennelProvider_TempoFunctions(t *testing.T) {
+	source := `
+(bpm 140)
+(steps 12)
+
+(fn pattern [bar]
+  [])
+
+pattern
+`
+
+	provider, err := New(source)
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+
+	_, bpm, stepsPerBar, err := provider.Next(0)
+	if err != nil {
+		t.Fatalf("Next(0) error = %v, want nil", err)
+	}
+
+	if bpm != 140 {
+		t.Errorf("bpm = %d, want 140", bpm)
+	}
+	if stepsPerBar != 12 {
+		t.Errorf("stepsPerBar = %d, want 12", stepsPerBar)
+	}
+}
