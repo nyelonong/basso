@@ -312,12 +312,14 @@ func (s *beepSink) SetFire(source string, begin, sustain time.Duration, volume, 
 
 // SetFireNote waits, in its own goroutine, until reference+begin is reached
 // (or returns immediately if that's already passed), then synthesizes note
-// as a sawtooth tone sustaining for sustain, wraps it in Volume then Pan —
-// the same pattern SetFire uses for sample-based hits — and plays it.
+// as instrument's voice sustaining for sustain, wraps it in Volume then Pan
+// — the same pattern SetFire uses for sample-based hits — and plays it.
 // Unlike SetFire's sustain (currently unused, Engine.Run always passes 0),
 // sustain here is load-bearing: it's how long the tone rings before its
-// envelope closes it out.
-func (s *beepSink) SetFireNote(note string, begin, sustain time.Duration, volume, pan float64) {
+// envelope closes it out. instrument selects the synthesis path; an unknown
+// instrument (or a malformed note, same precedent) logs to stderr and
+// silently skips the hit rather than erroring the whole engine.
+func (s *beepSink) SetFireNote(note string, instrument string, begin, sustain time.Duration, volume, pan float64) {
 	go func() {
 		if wait := time.Until(s.reference.Add(begin)); wait > 0 {
 			time.Sleep(wait)
@@ -329,7 +331,17 @@ func (s *beepSink) SetFireNote(note string, begin, sustain time.Duration, volume
 			return
 		}
 
-		tone, err := synthesizeNote(freq, sustain)
+		var tone beep.Streamer
+		switch instrument {
+		case "", "bass":
+			tone, err = synthesizeNote(freq, sustain)
+		case "brass":
+			tone, err = synthesizeBrass(freq, sustain)
+		case "pluck":
+			tone, err = synthesizePluck(freq, sustain)
+		default:
+			err = fmt.Errorf("beepSink: unknown instrument %q", instrument)
+		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "basso: SetFireNote:", err)
 			return

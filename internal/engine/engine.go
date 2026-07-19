@@ -13,12 +13,13 @@ import (
 // lives in whoever constructs the Hit (e.g. FennelProvider); Engine just
 // trusts the Hit it's given and dispatches on whether Note is empty.
 type Hit struct {
-	Step     int
-	Sample   string // WAV filename; empty if Note is set
-	Note     string // scientific pitch notation, e.g. "C2", "A#1"; empty if Sample is set
-	Length   int    // sustain, in steps — meaningful for Note hits only; ignored for Sample hits
-	Pan      float64
-	Velocity float64
+	Step       int
+	Sample     string // WAV filename; empty if Note is set
+	Note       string // scientific pitch notation, e.g. "C2", "A#1"; empty if Sample is set
+	Instrument string // "bass" (default), "brass", "pluck" — meaningful only when Note is set
+	Length     int    // sustain, in steps — meaningful for Note hits only; ignored for Sample hits
+	Pan        float64
+	Velocity   float64
 }
 
 // PatternProvider supplies the hits, tempo (bpm), and bar length
@@ -40,12 +41,12 @@ type AudioSink interface {
 	SetFire(source string, begin, sustain time.Duration, volume, pan float64)
 
 	// SetFireNote schedules a synthesized tone at note (scientific pitch
-	// notation, e.g. "C2") to play at begin, sustaining for sustain, at the
-	// given volume and pan. Parallel to SetFire, but for note-based hits;
-	// unlike SetFire's sustain (currently unused by Engine.Run), sustain
-	// here is load-bearing: how long the synthesized tone rings before its
-	// envelope closes it out.
-	SetFireNote(note string, begin, sustain time.Duration, volume, pan float64)
+	// notation, e.g. "C2"), voiced as instrument ("bass", "brass", "pluck"),
+	// to play at begin, sustaining for sustain, at the given volume and pan.
+	// Parallel to SetFire, but for note-based hits; unlike SetFire's sustain
+	// (currently unused by Engine.Run), sustain here is load-bearing: how
+	// long the synthesized tone rings before its envelope closes it out.
+	SetFireNote(note string, instrument string, begin, sustain time.Duration, volume, pan float64)
 
 	// Teardown closes the audio device and releases its resources.
 	Teardown()
@@ -134,7 +135,7 @@ func (e *Engine) Run(ctx context.Context, provider PatternProvider) error {
 			begin := barStart + time.Duration(h.Step)*stepDuration
 			if h.Note != "" {
 				sustain := time.Duration(h.Length) * stepDuration
-				e.sink.SetFireNote(h.Note, begin, sustain, h.Velocity, h.Pan)
+				e.sink.SetFireNote(h.Note, h.Instrument, begin, sustain, h.Velocity, h.Pan)
 			} else {
 				e.sink.SetFire(h.Sample, begin, 0, h.Velocity, h.Pan)
 			}

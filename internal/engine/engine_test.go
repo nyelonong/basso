@@ -17,12 +17,13 @@ type fakeSink struct {
 }
 
 type recordedFire struct {
-	source  string
-	note    string
-	begin   time.Duration
-	sustain time.Duration
-	volume  float64
-	pan     float64
+	source     string
+	note       string
+	instrument string
+	begin      time.Duration
+	sustain    time.Duration
+	volume     float64
+	pan        float64
 }
 
 func (f *fakeSink) SetFire(source string, begin, sustain time.Duration, volume, pan float64) {
@@ -31,10 +32,10 @@ func (f *fakeSink) SetFire(source string, begin, sustain time.Duration, volume, 
 	f.fires = append(f.fires, recordedFire{source: source, begin: begin, sustain: sustain, volume: volume, pan: pan})
 }
 
-func (f *fakeSink) SetFireNote(note string, begin, sustain time.Duration, volume, pan float64) {
+func (f *fakeSink) SetFireNote(note string, instrument string, begin, sustain time.Duration, volume, pan float64) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.fires = append(f.fires, recordedFire{note: note, begin: begin, sustain: sustain, volume: volume, pan: pan})
+	f.fires = append(f.fires, recordedFire{note: note, instrument: instrument, begin: begin, sustain: sustain, volume: volume, pan: pan})
 }
 
 func (f *fakeSink) Start() {
@@ -430,6 +431,42 @@ func TestEngine_RoutesNoteHitsToSetFireNote(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("fire[%d] = %+v, want %+v", i, got[i], want[i])
 		}
+	}
+}
+
+// TestEngine_RoutesInstrumentToSetFireNote proves Run forwards Hit.Instrument
+// through to SetFireNote's instrument parameter unchanged — no validation or
+// interpretation in Engine, same "just forward it" contract as note/pan/
+// velocity.
+func TestEngine_RoutesInstrumentToSetFireNote(t *testing.T) {
+	provider := &scriptedProvider{
+		bars: []barScript{
+			{
+				hits: []Hit{
+					{Step: 0, Note: "C2", Instrument: "brass", Length: 4, Pan: 0.2, Velocity: 0.9},
+				},
+				bpm:         120,
+				stepsPerBar: 16,
+			},
+		},
+	}
+	sink := &fakeSink{}
+	engine := &Engine{sink: sink, clock: newFakeClock(true)}
+
+	err := engine.Run(context.Background(), provider)
+	if !errors.Is(err, errPatternExhausted) {
+		t.Fatalf("Run() error = %v, want errPatternExhausted", err)
+	}
+
+	sink.mu.Lock()
+	got := sink.fires
+	sink.mu.Unlock()
+
+	if len(got) != 1 {
+		t.Fatalf("fires = %+v, want 1 fire", got)
+	}
+	if got[0].instrument != "brass" {
+		t.Errorf("fires[0].instrument = %q, want %q", got[0].instrument, "brass")
 	}
 }
 
