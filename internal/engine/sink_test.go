@@ -4,6 +4,7 @@ import (
 	"io"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/gopxl/beep/v2"
 )
@@ -77,5 +78,59 @@ func TestVolumeParams(t *testing.T) {
 
 	if _, silent := volumeParams(-0.5); !silent {
 		t.Errorf("volumeParams(-0.5) silent = false, want true")
+	}
+}
+
+// countSamples drains s by repeated Stream() calls (same technique
+// TestSampleCache_DecodesRealWAV uses for real-file computation without a
+// device) and returns the total number of samples it produced.
+func countSamples(s beep.Streamer) int {
+	total := 0
+	buf := make([][2]float64, 512)
+	for {
+		n, ok := s.Stream(buf)
+		total += n
+		if !ok {
+			return total
+		}
+	}
+}
+
+// TestSynthesizeNote_SampleCount verifies that the note-to-streamer path
+// (SawtoothTone, cut to length, enveloped) produces exactly
+// deviceSampleRate.N(sustain) samples, for a range of sustains including a
+// very short one where the attack+release envelope must clamp to fit.
+func TestSynthesizeNote_SampleCount(t *testing.T) {
+	tests := []struct {
+		name    string
+		sustain time.Duration
+	}{
+		{name: "normal note", sustain: 250 * time.Millisecond},
+		{name: "long note", sustain: 2 * time.Second},
+		{name: "very short note", sustain: 5 * time.Millisecond},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			streamer, err := synthesizeNote(110.0, tt.sustain)
+			if err != nil {
+				t.Fatalf("synthesizeNote() error = %v, want nil", err)
+			}
+
+			want := deviceSampleRate.N(tt.sustain)
+			got := countSamples(streamer)
+			if got != want {
+				t.Errorf("countSamples() = %d, want %d", got, want)
+			}
+		})
+	}
+}
+
+// TestSynthesizeNote_RejectsAboveNyquist verifies that a frequency at or
+// above the Nyquist limit for deviceSampleRate returns an error (propagated
+// from generators.SawtoothTone) instead of a panic.
+func TestSynthesizeNote_RejectsAboveNyquist(t *testing.T) {
+	if _, err := synthesizeNote(float64(deviceSampleRate)/2, 100*time.Millisecond); err == nil {
+		t.Fatalf("synthesizeNote() error = nil, want error for a frequency at Nyquist")
 	}
 }

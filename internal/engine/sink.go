@@ -11,6 +11,7 @@ import (
 
 	"github.com/gopxl/beep/v2"
 	"github.com/gopxl/beep/v2/effects"
+	"github.com/gopxl/beep/v2/generators"
 	"github.com/gopxl/beep/v2/speaker"
 	"github.com/gopxl/beep/v2/wav"
 )
@@ -81,6 +82,73 @@ func volumeParams(volume float64) (v float64, silent bool) {
 	return math.Log2(volume), false
 }
 
+// bassAttack is the fixed attack ramp applied to every synthesized note, so
+// it doesn't click in at full volume.
+const bassAttack = 8 * time.Millisecond
+
+// bassMaxRelease is the fixed cap on the release ramp's length; the actual
+// release is also capped to bassReleaseFraction of the note's total length,
+// whichever is smaller (see splitEnvelope).
+const bassMaxRelease = 30 * time.Millisecond
+
+// bassReleaseFraction is the release ramp's cap as a fraction of the note's
+// total sample count, so a short note's release doesn't eat more than a
+// reasonable slice of the note.
+const bassReleaseFraction = 0.2
+
+// splitEnvelope divides totalN samples into an attack ramp, a plain sustain
+// portion, and a release ramp, clamped so attackN+releaseN never exceeds
+// totalN (a very short note must not get overlapping/negative segments).
+// The release is capped at both bassMaxRelease and bassReleaseFraction of
+// totalN, whichever is smaller; the attack is capped to whatever's left
+// after that.
+func splitEnvelope(totalN int) (attackN, releaseN int) {
+	attackN = deviceSampleRate.N(bassAttack)
+	releaseN = deviceSampleRate.N(bassMaxRelease)
+	if capped := int(float64(totalN) * bassReleaseFraction); releaseN > capped {
+		releaseN = capped
+	}
+	if releaseN < 0 {
+		releaseN = 0
+	}
+	if attackN > totalN-releaseN {
+		attackN = totalN - releaseN
+	}
+	if attackN < 0 {
+		attackN = 0
+	}
+	return attackN, releaseN
+}
+
+// synthesizeNote builds a finite streamer for a synthesized bass note at
+// freq, sustaining for exactly deviceSampleRate.N(sustain) samples: a
+// sawtooth tone (generators.SawtoothTone — an infinite oscillator, hence the
+// cut), enveloped with a short attack and release (effects.Transition) so it
+// doesn't click at the start or end. No caching (unlike sampleCache for
+// WAVs): synthesizing a tone is cheap pure computation, not disk I/O.
+func synthesizeNote(freq float64, sustain time.Duration) (beep.Streamer, error) {
+	tone, err := generators.SawtoothTone(deviceSampleRate, freq)
+	if err != nil {
+		return nil, fmt.Errorf("synthesizeNote: %w", err)
+	}
+
+	totalN := deviceSampleRate.N(sustain)
+	attackN, releaseN := splitEnvelope(totalN)
+	sustainN := totalN - attackN - releaseN
+
+	var segments []beep.Streamer
+	if attackN > 0 {
+		segments = append(segments, effects.Transition(beep.Take(attackN, tone), attackN, 0, 1, effects.TransitionLinear))
+	}
+	if sustainN > 0 {
+		segments = append(segments, beep.Take(sustainN, tone))
+	}
+	if releaseN > 0 {
+		segments = append(segments, effects.Transition(beep.Take(releaseN, tone), releaseN, 1, 0, effects.TransitionLinear))
+	}
+	return beep.Seq(segments...), nil
+}
+
 // beepSink is the real AudioSink, backed by github.com/gopxl/beep/v2.
 // SetFire has no "play later" primitive to call into (speaker.Play starts
 // essentially immediately), so it spawns a goroutine per fire that waits
@@ -128,6 +196,45 @@ func (s *beepSink) SetFire(source string, begin, sustain time.Duration, volume, 
 			Pan: pan,
 			Streamer: &effects.Volume{
 				Streamer: buf.Streamer(0, buf.Len()),
+				Base:     2,
+				Volume:   v,
+				Silent:   silent,
+			},
+		}
+		speaker.Play(streamer)
+	}()
+}
+
+// SetFireNote waits, in its own goroutine, until reference+begin is reached
+// (or returns immediately if that's already passed), then synthesizes note
+// as a sawtooth tone sustaining for sustain, wraps it in Volume then Pan —
+// the same pattern SetFire uses for sample-based hits — and plays it.
+// Unlike SetFire's sustain (currently unused, Engine.Run always passes 0),
+// sustain here is load-bearing: it's how long the tone rings before its
+// envelope closes it out.
+func (s *beepSink) SetFireNote(note string, begin, sustain time.Duration, volume, pan float64) {
+	go func() {
+		if wait := time.Until(s.reference.Add(begin)); wait > 0 {
+			time.Sleep(wait)
+		}
+
+		freq, err := parseNote(note)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "basso: SetFireNote:", err)
+			return
+		}
+
+		tone, err := synthesizeNote(freq, sustain)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "basso: SetFireNote:", err)
+			return
+		}
+
+		v, silent := volumeParams(volume)
+		streamer := &effects.Pan{
+			Pan: pan,
+			Streamer: &effects.Volume{
+				Streamer: tone,
 				Base:     2,
 				Volume:   v,
 				Silent:   silent,
