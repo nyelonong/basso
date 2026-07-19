@@ -60,7 +60,7 @@ Copied verbatim from the spec's Constraints section.
 | 3.1  | 3    | done | `3ad5315`,`2b294cd` — StaticProvider transcribes m001 exactly; 7 total engine tests pass; gates green |
 | 4.1  | 4    | done | `c6ba736`,`201306d` — sink.go configures real mixer+path+start time; cmd/basso wired to Engine+StaticProvider+SIGINT; smoke green (device configures, ~105% CPU while running, clean SIGINT exit) |
 | 4.2  | 4    | done | `44f12c4`+6 more — vendored Fennel 1.6.1 runs directly on gopher-lua, no fallback needed; 3 tests pass; reproduces StaticProvider's m001 output exactly |
-| 5.1  | 5    | in-progress | dispatched docs/briefs/5.1-brief.md @ff6ffb8 |
+| 5.1  | 5    | done | `aa59824`,`f85cbc5`,`bfe7140`,`a6508f3` — NewFromFile + fsnotify, debounced pending-source swap at start of Next; 15 total tests, -race clean across 3 repeats |
 | 6.1  | 6    | pending | — |
 
 ## Waves
@@ -336,7 +336,15 @@ Spec coverage: spec Wave 3 (hot reload, bar-granular, no audio interruption).
 - [ ] RED+GREEN: `TestFennelProvider_NoAudioRestartOnReload`, `TestFennelProvider_RealFsnotify`
 - [ ] Wave gate: gates green
 
-**Wave 5 gate:** gates green; reload tests pass.
+**Wave 5 gate — CLOSED @a6508f3:** `gofmt -l .`/`go vet ./...`/`go build ./...`
+green; `go test ./... -race -count=3` clean across 3 repeats, all 15 tests
+pass, no flakiness. Read `fennel.go`/`fennel_reload_test.go` in full:
+pending-source swap happens at the top of `Next` (bar-granular for free,
+matches 4.2's re-eval-per-call design), synchronized via `pendingMu`, no
+data race under `-race`. Minor observation, not a blocker: `Close()` signals
+shutdown but doesn't block until `watchLoop`'s goroutine has actually
+returned — functionally fine (it exits promptly on its own), just not
+strictly synchronous; not worth a follow-up task at this scale.
 
 ---
 
