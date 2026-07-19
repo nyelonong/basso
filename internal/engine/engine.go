@@ -28,8 +28,8 @@ type PatternProvider interface {
 	Next(bar int) (hits []Hit, bpm int, stepsPerBar int, err error)
 }
 
-// AudioSink is the audio device seam. The real implementation (atomixSink,
-// in sink.go) wraps gopkg.in/mix.v0; tests use a fake.
+// AudioSink is the audio device seam. The real implementation (beepSink,
+// in sink.go) wraps github.com/gopxl/beep/v2; tests use a fake.
 type AudioSink interface {
 	// Start opens the audio device and begins the playback clock.
 	Start()

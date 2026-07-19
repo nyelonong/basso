@@ -15,9 +15,10 @@ Fennel, save, hear it on the next bar, edit again.
 
 ## Non-goals
 
-- **No synthesis.** basso triggers WAV samples only. Generating tones
-  (oscillators, envelopes, effects) is out of scope; the sample engine stays the
-  only voice.
+- ~~**No synthesis.**~~ Superseded post-v1: the bass instrument (see Script
+  API) added a synthesized sawtooth voice with a fixed attack/release
+  envelope, alongside WAV sample triggering. Still out of scope beyond that:
+  no filters/EQ, no oscillator-shape choice, no per-note effects chains.
 - **No Tidal-style time combinators or Sonic-Pi-style imperative `live_loop`.**
   The script↔engine contract is the declarative bar function (Decision 4).
 - **No GUI / web editor.** Editing happens in the user's text editor; basso only
