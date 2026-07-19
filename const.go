@@ -6,8 +6,8 @@ import (
     "math/rand"
     "time"
 
-    "github.com/outrightmental/go-atomix"
-    "github.com/outrightmental/go-atomix/bind"
+    atomix "github.com/go-mix/mix"
+    "github.com/go-mix/mix/bind"
 )
 
 // Assets
