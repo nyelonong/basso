@@ -122,12 +122,19 @@ functions to configure tempo:
    {:step 2 :sample "maracas"}
    {:step 4 :sample "snare" :pan 0.0}
    {:step 4 :sample "maracas"}
-   {:step 7 :sample "kick2" :velocity 0.8}])
+   {:step 7 :sample "kick2" :velocity 0.8}
+   {:step 0 :note "C2" :length 4}])
 ```
 
-- A hit is a table with keys `step` (required), `sample` (required), and optional
-  `pan` (-1..1) and `velocity` (0..1, default 1.0). `pan` omitted → random in
-  [-1,1], matching today's per-fire random pan.
+- A hit is a table with keys `step` (required) and optional `pan` (-1..1) and
+  `velocity` (0..1, default 1.0). `pan` omitted → random in [-1,1], matching
+  today's per-fire random pan. Exactly one of `sample` or `note` is also
+  required:
+  - `sample` — a WAV filename, played as-is (a drum hit).
+  - `note` — a synthesized bass tone at that pitch, in scientific pitch
+    notation (e.g. `"C2"`, `"A#1"`); sustains for `length` steps (default 1
+    if omitted). `length` is meaningless on a `sample` hit.
+  - Both or neither of `sample`/`note` on one hit is a mapping error.
 - `pattern` returns a sequence of these tables for the bar.
 - `bpm` and `steps` are host functions the engine binds into the Fennel
   environment; the engine uses the last values set during eval for the next bar.
