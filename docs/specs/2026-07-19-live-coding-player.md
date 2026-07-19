@@ -15,10 +15,12 @@ Fennel, save, hear it on the next bar, edit again.
 
 ## Non-goals
 
-- ~~**No synthesis.**~~ Superseded post-v1: the bass instrument (see Script
-  API) added a synthesized sawtooth voice with a fixed attack/release
-  envelope, alongside WAV sample triggering. Still out of scope beyond that:
-  no filters/EQ, no oscillator-shape choice, no per-note effects chains.
+- ~~**No synthesis.**~~ Superseded post-v1: `:instrument` (see Script API)
+  picks a synthesized voice — `"bass"`/`"brass"` (sawtooth, per-voice fixed
+  attack/release envelope) or `"pluck"` (Karplus-Strong string synthesis) —
+  alongside WAV sample triggering. Still out of scope beyond that: no
+  filters/EQ, no user-configurable envelope/decay parameters, no per-note
+  effects chains, no piano/sample-based or FM-synthesis voices.
 - **No Tidal-style time combinators or Sonic-Pi-style imperative `live_loop`.**
   The script↔engine contract is the declarative bar function (Decision 4).
 - **No GUI / web editor.** Editing happens in the user's text editor; basso only
