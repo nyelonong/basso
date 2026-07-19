@@ -57,7 +57,7 @@ Copied verbatim from the spec's Constraints section.
 | 1.2  | 1    | done | `a41872b` — shell.nix has SDL2/PortAudio/Go/pkg-config/sox; `nix-shell --run 'go version'` passes |
 | 2.1  | 2    | done | `21a0b2c`,`f4e7703`,`e0cabaa` — Hit/PatternProvider/AudioSink/atomixSink/Engine.Run; 3 tests pass; gates green |
 | 2.2  | 2    | done | `466d7a6`,`e86c396`,`0a1c320` — clock seam, ctx-aware bar wait; 5 tests pass in 0.09s; gates green; re-verified empirically (real clock: 1 fire scheduled in 602ms against a non-blocking provider, was 722k/50ms before the fix) |
-| 3.1  | 3    | pending | — |
+| 3.1  | 3    | in-progress | dispatched docs/briefs/3.1-brief.md @3ee96ad |
 | 4.1  | 4    | pending | — |
 | 4.2  | 4    | pending | — |
 | 5.1  | 5    | pending | — |
