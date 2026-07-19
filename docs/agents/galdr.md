@@ -2,19 +2,14 @@
 
 ## Gates
 
-Task-level and gate-level commands.
+Task-level and gate-level commands. Run inside `nix-shell` (or `make gates`).
 
 - `gofmt -l .`
 - `go vet ./...`
 - `go test ./...`
 
-> **Blocker:** no `go.mod` exists. The three commands above require a Go module
-> to run. Add `go mod init` (e.g. `go mod init github.com/nyelonong/basso`) and
-> `go get gopkg.in/mix.v0` before these gates will pass.
->
-> **Skip note (audio):** end-to-end runs (`go run const.go m001.go`) require the
-> system libraries SDL2 and PortAudio and a working audio device. In any
-> environment lacking them, the run skips — a skipped run is not a clean pass.
+No blockers — `go.mod` exists, pure-Go, `CGO_ENABLED=0` clean, all three
+commands pass on a clean checkout.
 
 ## Invariants
 
@@ -36,23 +31,27 @@ Task-level and gate-level commands.
 
 ## Worktree notes
 
-- Language: Go. No `go.mod` yet (see Gates) — a fresh worktree needs the same
-  `go mod init` + `go get` before it builds.
+- Language: Go, pure-Go dependency tree, `CGO_ENABLED=0` clean — a fresh
+  worktree just needs `nix-shell` (provides Go) or a system Go toolchain, no
+  other setup.
 - No env files to copy.
-- Service dependencies: system audio libraries — SDL2 and PortAudio. Install
-  via **nix** (e.g. `nix-shell -p SDL2 portaudio --run 'go run const.go m001.go'`,
-  or a `shell.nix` / flake devshell). Do not use brew. The README's apt commands
-  target Debian/Ubuntu. No background services / docker compose.
+- Service dependencies: none. `github.com/gopxl/beep/v2`'s audio backend
+  (`ebitengine/oto`/`purego`) talks to the OS audio API directly via
+  dlopen-based FFI — no native libs, no nix packages beyond Go itself. No
+  background services / docker compose.
 
 ## Smoke
 
-- Launch: `go run const.go m001.go`
-- Base URL: none — output is audio played to the sound device, plus one printed
-  status line (`Atomix, pid:..., spec:...`).
+- Launch: `nix-shell --run 'go run ./cmd/basso play patterns/basic-groove.fnl'`
+  (or `make run`)
+- Base URL: none — output is audio played to the sound device, plus a printed
+  `bar <n> bpm <bpm>` line per bar.
 - Test account / seed data: none.
 - Smoke-sheet output dir: `docs/smoke/`
-- Requires: SDL2 + PortAudio installed and a working audio device. Without them,
-  smoke is a skip, not a pass.
+- Requires: a working audio device to confirm real playback (the process
+  itself runs and exits cleanly even without one — only actual audible sound
+  needs a real device, and that specifically needs a human listening, an
+  agent cannot verify it directly).
 
 ## Briefs
 

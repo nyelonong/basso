@@ -19,21 +19,26 @@ scripts evaluated by an embedded gopher-lua interpreter.
 ## Building
 
 - Module: `github.com/nyelonong/basso`.
-- Enter the devshell: `nix-shell` (provides SDL2, PortAudio, sox, pkg-config, Go —
-  see `shell.nix`). **Do not use Homebrew.**
-- Build: `nix-shell --run 'go build ./...'`
-- Gates: `gofmt -l .`, `go vet ./...`, `go test ./...` (see `docs/agents/galdr.md`).
-- Run: `nix-shell --run 'go run ./cmd/basso play <file.fnl>'`.
+- Enter the devshell: `nix-shell` (provides Go — see `shell.nix`). **Do not
+  use Homebrew.**
+- Build: `nix-shell --run 'go build ./...'` (or `make build`).
+- Install: `make install` — `go install ./cmd/basso`, then `basso play
+  <file.fnl>` works directly, no nix-shell needed at runtime.
+- Gates: `gofmt -l .`, `go vet ./...`, `go test ./...` (see
+  `docs/agents/galdr.md`; or `make gates`).
+- Run: `nix-shell --run 'go run ./cmd/basso play <file.fnl>'` (or `make run
+  FILE=<file.fnl>`).
 
 ## System dependencies
 
-Provided by the nix devshell (`shell.nix`), not brew: SDL2, PortAudio, sox,
-pkg-config, and Go. `github.com/gopxl/beep/v2`'s device backend
-(`ebitengine/oto`) talks to the OS audio API directly via
-`ebitengine/purego` (dlopen-based FFI, no cgo) rather than through
-SDL2/PortAudio/sox — those devshell entries predate this backend swap and
-are left as-is for now; whether they're still needed is a separate decision
-for the controller/user.
+None beyond Go. The build is pure Go, `CGO_ENABLED=0` clean — confirmed by
+building and running with it explicitly set. `github.com/gopxl/beep/v2`'s
+device backend (`ebitengine/oto` via `ebitengine/purego`) talks to the OS
+audio API directly via dlopen-based FFI, no cgo, no native libs. `shell.nix`
+used to provide SDL2/PortAudio/sox/pkg-config for the pre-rebuild
+`go-atomix`/early `gopkg.in/mix.v0` era; removed once the `gopxl/beep/v2`
+swap made them dead weight (verified: build and real playback both work with
+them absent).
 
 ## Architecture
 
@@ -55,8 +60,9 @@ for the controller/user.
 - Hot reload is bar-granular: pattern changes take effect at the next bar
   boundary, never mid-bar. The audio device is opened once at startup and held
   open across reloads.
-- Pure-Go app code only (no cgo in app code); the native audio libs come from
-  the nix devshell.
+- Pure-Go, no cgo, anywhere in the dependency tree (`CGO_ENABLED=0` builds
+  and runs correctly) — `gopxl/beep/v2`'s audio backend uses dlopen-based FFI
+  (`ebitengine/purego`) instead of cgo bindings to native libs.
 
 <!-- galdr:start -->
 ## galdr

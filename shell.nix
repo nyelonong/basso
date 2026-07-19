@@ -1,12 +1,9 @@
 # Devshell for basso.
 #
-# Provides the native audio libraries the go-mix/mix engine needs to build and
-# run on macOS without Homebrew:
-#   - SDL2        (go-mix/mix backend)
-#   - PortAudio   (audio device I/O)
-#   - sox         (libsox, linked by the transitive go-sox cgo dep)
-#   - pkg-config  (lets cgo locate sox / SDL2 / PortAudio)
-#   - Go          (compiler / toolchain)
+# Pure-Go build: github.com/gopxl/beep/v2's audio backend (ebitengine/oto,
+# via ebitengine/purego) talks to the OS audio API directly through
+# dlopen-based FFI, no cgo. The only devshell dependency is Go itself;
+# confirmed the binary builds and runs correctly with CGO_ENABLED=0.
 #
 # Enter with:  nix-shell
 # Build with:  nix-shell --run 'go build ./...'
@@ -22,24 +19,10 @@ pkgs.mkShell {
 
   nativeBuildInputs = [
     pkgs.go
-    pkgs.pkg-config
   ];
-
-  buildInputs = [
-    pkgs.SDL2
-    pkgs.portaudio
-    pkgs.sox
-  ];
-
-  # Make the native audio library include/lib dirs discoverable to cgo, since
-  # nix-shell does not otherwise inject them into the std environment.
-  env.CGO_ENABLED = "1";
 
   shellHook = ''
     echo "basso devshell"
-    echo "  go:        $(go version)"
-    echo "  SDL2:      ${pkgs.SDL2}"
-    echo "  PortAudio: ${pkgs.portaudio}"
-    echo "  sox:       ${pkgs.sox}"
+    echo "  go: $(go version)"
   '';
 }
