@@ -15,9 +15,10 @@ import (
 // actual device present.
 type fakeSink struct{}
 
-func (fakeSink) Start()                                                                   {}
-func (fakeSink) Teardown()                                                                {}
-func (fakeSink) SetFire(source string, begin, sustain time.Duration, volume, pan float64) {}
+func (fakeSink) Start()                                                                     {}
+func (fakeSink) Teardown()                                                                  {}
+func (fakeSink) SetFire(source string, begin, sustain time.Duration, volume, pan float64)   {}
+func (fakeSink) SetFireNote(note string, begin, sustain time.Duration, volume, pan float64) {}
 
 func newFakeSink() engine.AudioSink { return fakeSink{} }
 

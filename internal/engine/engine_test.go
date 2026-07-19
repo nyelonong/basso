@@ -18,6 +18,7 @@ type fakeSink struct {
 
 type recordedFire struct {
 	source  string
+	note    string
 	begin   time.Duration
 	sustain time.Duration
 	volume  float64
@@ -28,6 +29,12 @@ func (f *fakeSink) SetFire(source string, begin, sustain time.Duration, volume, 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.fires = append(f.fires, recordedFire{source: source, begin: begin, sustain: sustain, volume: volume, pan: pan})
+}
+
+func (f *fakeSink) SetFireNote(note string, begin, sustain time.Duration, volume, pan float64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.fires = append(f.fires, recordedFire{note: note, begin: begin, sustain: sustain, volume: volume, pan: pan})
 }
 
 func (f *fakeSink) Start() {
@@ -377,6 +384,52 @@ drain:
 	}
 	if finalTeardown != 1 {
 		t.Errorf("teardownCalls (after Run returned) = %d, want 1", finalTeardown)
+	}
+}
+
+// TestEngine_RoutesNoteHitsToSetFireNote proves Run dispatches each hit by
+// whether Note is set: sample hits still go through SetFire with sustain=0
+// (no behavior change for existing patterns), note hits go through
+// SetFireNote with sustain computed from Length x stepDuration, the same
+// arithmetic TestEngine_SchedulesOnContinuousClock verifies for begin.
+func TestEngine_RoutesNoteHitsToSetFireNote(t *testing.T) {
+	provider := &scriptedProvider{
+		bars: []barScript{
+			{
+				hits: []Hit{
+					{Step: 0, Sample: "kick", Pan: 0, Velocity: 1},
+					{Step: 2, Note: "C2", Length: 4, Pan: 0.2, Velocity: 0.9},
+				},
+				bpm:         120,
+				stepsPerBar: 16,
+			},
+		},
+	}
+	sink := &fakeSink{}
+	engine := &Engine{sink: sink, clock: newFakeClock(true)}
+
+	err := engine.Run(context.Background(), provider)
+	if !errors.Is(err, errPatternExhausted) {
+		t.Fatalf("Run() error = %v, want errPatternExhausted", err)
+	}
+
+	stepDuration := time.Minute / time.Duration(120*4)
+	want := []recordedFire{
+		{source: "kick", begin: 0, sustain: 0, volume: 1, pan: 0},
+		{note: "C2", begin: 2 * stepDuration, sustain: 4 * stepDuration, volume: 0.9, pan: 0.2},
+	}
+
+	sink.mu.Lock()
+	got := sink.fires
+	sink.mu.Unlock()
+
+	if len(got) != len(want) {
+		t.Fatalf("fires = %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("fire[%d] = %+v, want %+v", i, got[i], want[i])
+		}
 	}
 }
 

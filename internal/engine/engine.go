@@ -7,10 +7,16 @@ import (
 	"time"
 )
 
-// Hit is a single sample trigger within a bar.
+// Hit is a single sample or note trigger within a bar. It is sample-based
+// (Sample set, Note empty) or note-based (Note set, Sample empty) —
+// mutually exclusive. Ownership of defaulting/validation between the two
+// lives in whoever constructs the Hit (e.g. FennelProvider); Engine just
+// trusts the Hit it's given and dispatches on whether Note is empty.
 type Hit struct {
 	Step     int
-	Sample   string
+	Sample   string // WAV filename; empty if Note is set
+	Note     string // scientific pitch notation, e.g. "C2", "A#1"; empty if Sample is set
+	Length   int    // sustain, in steps — meaningful for Note hits only; ignored for Sample hits
 	Pan      float64
 	Velocity float64
 }
@@ -32,6 +38,14 @@ type AudioSink interface {
 	// playback start reference), sustaining for sustain, at the given
 	// volume and pan.
 	SetFire(source string, begin, sustain time.Duration, volume, pan float64)
+
+	// SetFireNote schedules a synthesized tone at note (scientific pitch
+	// notation, e.g. "C2") to play at begin, sustaining for sustain, at the
+	// given volume and pan. Parallel to SetFire, but for note-based hits;
+	// unlike SetFire's sustain (currently unused by Engine.Run), sustain
+	// here is load-bearing: how long the synthesized tone rings before its
+	// envelope closes it out.
+	SetFireNote(note string, begin, sustain time.Duration, volume, pan float64)
 
 	// Teardown closes the audio device and releases its resources.
 	Teardown()
@@ -117,7 +131,13 @@ func (e *Engine) Run(ctx context.Context, provider PatternProvider) error {
 
 		stepDuration := time.Minute / time.Duration(bpm*4)
 		for _, h := range hits {
-			e.sink.SetFire(h.Sample, barStart+time.Duration(h.Step)*stepDuration, 0, h.Velocity, h.Pan)
+			begin := barStart + time.Duration(h.Step)*stepDuration
+			if h.Note != "" {
+				sustain := time.Duration(h.Length) * stepDuration
+				e.sink.SetFireNote(h.Note, begin, sustain, h.Velocity, h.Pan)
+			} else {
+				e.sink.SetFire(h.Sample, begin, 0, h.Velocity, h.Pan)
+			}
 		}
 
 		barStart += time.Duration(stepsPerBar) * stepDuration
