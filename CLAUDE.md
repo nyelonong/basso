@@ -6,10 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `basso` is a **live-coding player**: a persistent process that plays a
 Fennel pattern continuously and reloads it at the next bar boundary when the
-source file is saved, with no audio restart. Audio is triggered through
-`gopkg.in/mix.v0` (the successor to `github.com/outrightmental/go-atomix`; source
-repo at `github.com/go-mix/mix`, which declares its module path as
-`gopkg.in/mix.v0`), imported aliased as `atomix`. Patterns are Fennel (Lisp)
+source file is saved, with no audio restart. Audio is played through
+`github.com/gopxl/beep/v2` (`speaker`/`wav`/`effects` — built on
+`ebitengine/oto` for real device output). Patterns are Fennel (Lisp)
 scripts evaluated by an embedded gopher-lua interpreter.
 
 > **Status: done.** Spec: `docs/specs/2026-07-19-live-coding-player.md`
@@ -28,9 +27,13 @@ scripts evaluated by an embedded gopher-lua interpreter.
 
 ## System dependencies
 
-Provided by the nix devshell (`shell.nix`), not brew: SDL2, PortAudio, sox
-(libsox — the `gopkg.in/mix.v0` bind package transitively imports `go-sox`, a
-cgo dep), pkg-config, and Go. The audio library uses cgo via these.
+Provided by the nix devshell (`shell.nix`), not brew: SDL2, PortAudio, sox,
+pkg-config, and Go. `github.com/gopxl/beep/v2`'s device backend
+(`ebitengine/oto`) talks to the OS audio API directly via
+`ebitengine/purego` (dlopen-based FFI, no cgo) rather than through
+SDL2/PortAudio/sox — those devshell entries predate this backend swap and
+are left as-is for now; whether they're still needed is a separate decision
+for the controller/user.
 
 ## Architecture
 
@@ -39,10 +42,10 @@ cgo dep), pkg-config, and Go. The audio library uses cgo via these.
   `PatternProvider` / `AudioSink` types; providers `StaticProvider`
   (regression fixture holding the `m001` pattern as data) and `FennelProvider`
   (gopher-lua + vendored Fennel compiler; owns bar-granular hot reload via
-  fsnotify). `AudioSink` is a seam with a real `atomixSink` (wrapping
-  `gopkg.in/mix.v0`) and a `fakeSink` for tests.
-- `sound/808/` — WAV samples, loaded by `gopkg.in/mix.v0` via
-  `atomix.SetSoundsPath`.
+  fsnotify). `AudioSink` is a seam with a real `beepSink` (wrapping
+  `github.com/gopxl/beep/v2`) and a `fakeSink` for tests.
+- `sound/808/` — WAV samples, decoded via `beep/v2/wav.Decode` and cached
+  per sample name as `*beep.Buffer` by `beepSink`.
 - Timing: `stepDuration = time.Minute / (bpm*4)` → sixteenth-note resolution; 16
   steps = one bar. The engine re-evaluates the Fennel script and calls
   `pattern(bar)` once per bar boundary; reloads apply only at that boundary.
