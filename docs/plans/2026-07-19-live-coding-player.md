@@ -53,8 +53,8 @@ Copied verbatim from the spec's Constraints section.
 
 | Task | Wave | Status | Evidence |
 |------|------|--------|----------|
-| 1.1  | 1    | pending | — |
-| 1.2  | 1    | pending | — |
+| 1.1  | 1    | done | `8a5a2eb` — go.mod correct module path + 3 deps; `go build`/`go mod verify` pass |
+| 1.2  | 1    | done | `a41872b` — shell.nix has SDL2/PortAudio/Go/pkg-config/sox; `nix-shell --run 'go version'` passes |
 | 2.1  | 2    | pending | — |
 | 3.1  | 3    | pending | — |
 | 4.1  | 4    | pending | — |
