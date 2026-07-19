@@ -58,8 +58,8 @@ Copied verbatim from the spec's Constraints section.
 | 2.1  | 2    | done | `21a0b2c`,`f4e7703`,`e0cabaa` — Hit/PatternProvider/AudioSink/atomixSink/Engine.Run; 3 tests pass; gates green |
 | 2.2  | 2    | done | `466d7a6`,`e86c396`,`0a1c320` — clock seam, ctx-aware bar wait; 5 tests pass in 0.09s; gates green; re-verified empirically (real clock: 1 fire scheduled in 602ms against a non-blocking provider, was 722k/50ms before the fix) |
 | 3.1  | 3    | done | `3ad5315`,`2b294cd` — StaticProvider transcribes m001 exactly; 7 total engine tests pass; gates green |
-| 4.1  | 4    | pending | — |
-| 4.2  | 4    | pending | — |
+| 4.1  | 4    | in-progress | dispatched docs/briefs/4.1-brief.md @a609234 (write-scope amended: +sink.go) |
+| 4.2  | 4    | in-progress | dispatched docs/briefs/4.2-brief.md @a609234 |
 | 5.1  | 5    | pending | — |
 | 6.1  | 6    | pending | — |
 
@@ -200,15 +200,42 @@ exactly, in order; tests check sample/step/velocity exactly and bound pan to
 Spec coverage: spec Wave 1 (runnable player playing `m001` continuously) via 4.1; spec Wave 2 (Fennel provider) via 4.2. No write-scope overlap: 4.1 owns `cmd/basso/`; 4.2 owns `internal/engine/fennel.*` and the vendored compiler.
 
 #### Task 4.1: CLI v1 (Engine + StaticProvider)
-**Files:** Create `cmd/basso/main.go`
-**Write-scope:** `cmd/basso/main.go`
-**Consumes:** `Engine` from 2.1; `StaticProvider` from 3.1
-**Produces:** a `basso` binary that plays the `m001` pattern continuously until Ctrl-C — used as the base for 6.1's swap
-**Seams:** audio boundary — unit-testable parts are arg parsing/provider wiring (see 6.1 test); real-audio playback is a manual smoke, not automated here
-**Tests:** none new (Wave 4 gate smoke covers it)
+
+Write-scope amended after re-reading 2.1's actual delivery: `atomixSink` (from
+2.1) only wraps `Start`/`SetFire`/`Teardown` — by design, TDD only added what
+2.1's tests drove, and 2.1's own return report flagged that "future waves
+(StaticProvider/CLI, which own real spec/sound-path data) can extend the
+interface when a test needs it." Nothing calls `mix.Configure`/
+`SetSoundsPath`/`StartAt` yet, so without this task also touching `sink.go`,
+`cmd/basso` would have no way to set the audio spec or sounds path before
+playback — silent/broken audio, not a working CLI. Extending `sink.go` is the
+natural, foreseeable completion of that gap, not a new problem.
+
+**Files:** Create `cmd/basso/main.go`; edit `internal/engine/sink.go`
+**Write-scope:** `cmd/basso/main.go`, `internal/engine/sink.go`
+**Consumes:** `Engine`, `AudioSink` from 2.1; `StaticProvider` from 3.1
+**Produces:** a `basso` binary that plays the `m001` pattern continuously
+until Ctrl-C — used as the base for 6.1's swap
+**Seams:** audio boundary — unit-testable parts are arg parsing/provider
+wiring (see 6.1 test); real-audio playback is a manual smoke, not automated
+here. `atomixSink` itself is not unit-tested (same as 2.1 left it — it's the
+real adapter, proven only by the smoke run, not a fake).
+**Tests:** none new (Wave 4 gate smoke covers it; `atomixSink`'s extension is
+glue over the real API, same category as 2.1 left untested)
 **Model tier:** standard
-- [ ] Write `cmd/basso/main.go`: build `Engine` + `StaticProvider`, call `Engine.Run(ctx)` with SIGINT → ctx cancel
-- [ ] Manual smoke: `nix-shell --run 'go run ./cmd/basso'` plays `m001` continuously until Ctrl-C
+- [ ] In `sink.go`, make `atomixSink.Start()` also call, in order:
+      `atomix.Configure(spec.AudioSpec{Freq: 48000, Format: spec.AudioF32, Channels: 2})`
+      (import `spec "gopkg.in/mix.v0/bind/spec"`), `atomix.SetSoundsPath("sound/808/")`,
+      `atomix.StartAt(time.Now().Add(1 * time.Second))`, then the existing
+      `atomix.Start()` call — matches the values the old `const.go` used
+      (`sampleHz = 48000`, `AudioF32`, 2 channels, `"sound/808/"`, 1s padding)
+- [ ] Write `cmd/basso/main.go`: build `engine.NewEngine(engine.NewAtomixSink())`
+      + `&engine.StaticProvider{}`, call `Engine.Run(ctx, provider)` with
+      SIGINT (`os/signal.NotifyContext` or equivalent) → ctx cancel; print any
+      error `Run` returns other than `context.Canceled`
+- [ ] Manual smoke: `nix-shell --run 'go run ./cmd/basso'` plays `m001`
+      continuously until Ctrl-C, then exits cleanly (no panic, no leftover
+      process)
 - [ ] Wave gate: gates green + smoke green
 
 #### Task 4.2: FennelProvider core
@@ -219,7 +246,40 @@ Spec coverage: spec Wave 1 (runnable player playing `m001` continuously) via 4.1
 **Seams:** interpreter boundary — integration test against the real gopher-lua + vendored Fennel compiler (pure-Go, deterministic). If Fennel-on-gopher-lua is broken here, fall back to plain Lua on the same VM per Global Constraints and record the decision in `memory-progress.md`
 **Tests:** `TestFennelProvider_ReproducesM001` (a `.fnl` source returning the 16 `m001` hits yields the same `[]Hit` as `StaticProvider`); `TestFennelProvider_HitDefaults` (omitted `pan` → random-in-[-1,1] sentinel handled by engine; omitted `velocity` → 1.0); `TestFennelProvider_TempoFunctions` (`(bpm 140)` / `(steps 12)` set returned bpm/steps)
 **Model tier:** standard
-- [ ] Vendor the Fennel compiler as `internal/engine/fennel/compiler.lua` (license-permitted)
+
+Design note added after 2.1/2.2's review: `Next(bar)` must re-evaluate the
+*currently held* Fennel source on every call (not compile once in `New` and
+reuse a cached `pattern` function) — this is what "the engine re-evaluates
+the Fennel script... once per bar boundary" (`CLAUDE.md`) literally
+describes, and it's what makes wave 5's hot reload nearly free later (reload
+just swaps the held source string; `Next`'s re-eval behavior doesn't change).
+`bpm`/`steps` host functions bind fresh each eval; `Next` returns whatever
+they were last set to during that eval (default 120/16 if never called).
+
+Vendoring source (already located and verified in this session — confirmed
+present in the local nix store, MIT/SPDX-licensed, version 1.6.1, portable
+across Lua 5.1/5.2/5.3/LuaJIT by Fennel's own design, which is why it's
+expected to run under gopher-lua despite the version label):
+```
+nix-shell -p luaPackages.fennel --run 'cp "$(find /nix/store -maxdepth 4 -iname fennel.lua -path "*fennel*" 2>/dev/null | head -1)" internal/engine/fennel/compiler.lua'
+```
+If that `find` comes up empty (store path can differ per machine), the file
+is at `<fennel derivation output>/share/lua/5.2/fennel.lua` — `nix-shell -p
+luaPackages.fennel --run 'echo $out'` after building it will print the
+derivation path directly. If Fennel-on-gopher-lua genuinely fails to load
+(not just a missing-file problem), that's the plan's known, pre-approved
+fallback: switch to plain Lua on the same VM (Global Constraint 5) and record
+the decision in `memory-progress.md` — don't spend more than one focused
+attempt fighting a Fennel-specific incompatibility before taking the
+fallback.
+
+`Hit` field defaults: for a hit table missing `:pan`, `FennelProvider`
+generates the random value itself (in `[-1,1]`) before constructing the
+`Hit` — same precedent 3.1's `StaticProvider` already established (Go-level
+random generation at construction time, not a sentinel float and not a
+change to `Hit`/`Engine`). Missing `:velocity` → `1.0`.
+
+- [ ] Vendor the Fennel compiler as `internal/engine/fennel/compiler.lua` (license-permitted; command above)
 - [ ] RED: `TestFennelProvider_ReproducesM001` — fails to compile
 - [ ] Implement `FennelProvider.New`: create gopher-lua VM, load the Fennel compiler, compile+eval the source, bind `bpm`/`steps` host functions
 - [ ] Implement `Next(bar)`: call the script's `pattern(bar)`, map each hit table to `Hit`
