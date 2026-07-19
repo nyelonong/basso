@@ -42,6 +42,74 @@ func (f *fakeSink) Teardown() {
 	f.teardownCalls++
 }
 
+// fakeClock is a manually-driven clock double for Engine tests: it never
+// sleeps in real time. In instant mode (newFakeClock(true)) WaitUntil jumps
+// straight to the requested time and returns immediately, so tests that
+// don't care about pacing stay fast. In manual mode (newFakeClock(false))
+// WaitUntil blocks until the test calls Advance past the target time.
+type fakeClock struct {
+	mu      sync.Mutex
+	now     time.Time
+	instant bool
+	waiters []fakeClockWaiter
+	waited  chan time.Time // optional spy: if set, WaitUntil sends its target here before blocking
+}
+
+type fakeClockWaiter struct {
+	deadline time.Time
+	release  chan struct{}
+}
+
+func newFakeClock(instant bool) *fakeClock {
+	return &fakeClock{now: time.Unix(0, 0), instant: instant}
+}
+
+func (c *fakeClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *fakeClock) WaitUntil(t time.Time) error {
+	c.mu.Lock()
+	if c.instant || !t.After(c.now) {
+		c.now = t
+		c.mu.Unlock()
+		c.signal(t)
+		return nil
+	}
+	release := make(chan struct{})
+	c.waiters = append(c.waiters, fakeClockWaiter{deadline: t, release: release})
+	c.mu.Unlock()
+
+	c.signal(t)
+	<-release
+	return nil
+}
+
+func (c *fakeClock) signal(t time.Time) {
+	if c.waited != nil {
+		c.waited <- t
+	}
+}
+
+// Advance moves the fake clock forward by d, releasing any WaitUntil calls
+// (in manual mode) whose deadline has now passed.
+func (c *fakeClock) Advance(d time.Duration) {
+	c.mu.Lock()
+	c.now = c.now.Add(d)
+	var pending []fakeClockWaiter
+	for _, w := range c.waiters {
+		if !w.deadline.After(c.now) {
+			close(w.release)
+		} else {
+			pending = append(pending, w)
+		}
+	}
+	c.waiters = pending
+	c.mu.Unlock()
+}
+
 // errPatternExhausted is returned by test-double PatternProviders once their
 // scripted bars run out, giving Engine.Run a deterministic stopping point
 // without depending on real wall-clock time.
@@ -112,7 +180,7 @@ func TestEngine_SchedulesOnContinuousClock(t *testing.T) {
 		},
 	}
 	sink := &fakeSink{}
-	engine := NewEngine(sink)
+	engine := &Engine{sink: sink, clock: newFakeClock(true)}
 
 	err := engine.Run(context.Background(), provider)
 	if !errors.Is(err, errPatternExhausted) {
@@ -141,11 +209,73 @@ func TestEngine_SchedulesOnContinuousClock(t *testing.T) {
 	}
 }
 
+// TestEngine_PacesBarsAgainstClock proves Run does not call provider.Next
+// for bar N+1 until the injected clock has advanced past bar N's duration.
+func TestEngine_PacesBarsAgainstClock(t *testing.T) {
+	notify := make(chan int)
+	waited := make(chan time.Time)
+	clk := newFakeClock(false)
+	clk.waited = waited
+
+	// stopAfter 1: bar 0 plays normally, then bar 1's Next call exhausts
+	// the pattern, so the test only needs to drive one bar of pacing.
+	provider := &loopingProvider{bpm: 120, stepsPerBar: 4, notify: notify, stopAfter: 1}
+	sink := &fakeSink{}
+	engine := &Engine{sink: sink, clock: clk}
+
+	done := make(chan error, 1)
+	go func() { done <- engine.Run(context.Background(), provider) }()
+
+	if bar := <-notify; bar != 0 {
+		t.Fatalf("first Next call bar = %d, want 0", bar)
+	}
+
+	stepDuration := time.Minute / time.Duration(120*4)
+	barDuration := 4 * stepDuration
+	wantDeadline := clk.Now().Add(barDuration)
+
+	var gotDeadline time.Time
+	select {
+	case gotDeadline = <-waited:
+	case <-time.After(50 * time.Millisecond):
+		t.Fatal("Run did not wait after scheduling bar 0 (no call to the clock before requesting bar 1)")
+	}
+	if !gotDeadline.Equal(wantDeadline) {
+		t.Errorf("wait deadline = %v, want %v", gotDeadline, wantDeadline)
+	}
+
+	select {
+	case bar := <-notify:
+		t.Fatalf("Next called for bar %d before the clock advanced past bar 0's duration", bar)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	clk.Advance(barDuration)
+
+	select {
+	case bar := <-notify:
+		if bar != 1 {
+			t.Fatalf("Next call bar = %d, want 1", bar)
+		}
+	case <-time.After(50 * time.Millisecond):
+		t.Fatal("Run did not request bar 1 after the clock advanced past bar 0's duration")
+	}
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, errPatternExhausted) {
+			t.Fatalf("Run() error = %v, want errPatternExhausted", err)
+		}
+	case <-time.After(50 * time.Millisecond):
+		t.Fatal("Run did not return after the provider exhausted the pattern")
+	}
+}
+
 func TestEngine_HoldsAudioDeviceOpen(t *testing.T) {
 	notify := make(chan int)
 	provider := &loopingProvider{bpm: 120, stepsPerBar: 4, notify: notify, stopAfter: 5}
 	sink := &fakeSink{}
-	engine := NewEngine(sink)
+	engine := &Engine{sink: sink, clock: newFakeClock(true)}
 
 	done := make(chan error, 1)
 	go func() { done <- engine.Run(context.Background(), provider) }()
@@ -200,7 +330,7 @@ func TestEngine_SigIntTeardown(t *testing.T) {
 	// own, so the only thing that can end Run is ctx cancellation.
 	provider := &loopingProvider{bpm: 120, stepsPerBar: 4, notify: notify}
 	sink := &fakeSink{}
-	engine := NewEngine(sink)
+	engine := &Engine{sink: sink, clock: newFakeClock(true)}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)

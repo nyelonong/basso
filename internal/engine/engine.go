@@ -37,14 +37,41 @@ type AudioSink interface {
 	Teardown()
 }
 
-// Engine plays a pattern continuously, bar by bar, through an AudioSink.
-type Engine struct {
-	sink AudioSink
+// clock is Engine's pacing seam: Run uses it to wait for each bar's real
+// duration to pass before requesting the next one. realClock (below) backs
+// the default NewEngine(sink) path; tests inject a fake so pacing can be
+// proven deterministically, without real sleeps.
+type clock interface {
+	// Now returns the current time.
+	Now() time.Time
+	// WaitUntil blocks until t is reached.
+	WaitUntil(t time.Time) error
 }
 
-// NewEngine creates an Engine that schedules hits through sink.
+// realClock paces Run in actual wall-clock time.
+type realClock struct{}
+
+func (realClock) Now() time.Time { return time.Now() }
+
+func (realClock) WaitUntil(t time.Time) error {
+	d := time.Until(t)
+	if d <= 0 {
+		return nil
+	}
+	<-time.After(d)
+	return nil
+}
+
+// Engine plays a pattern continuously, bar by bar, through an AudioSink.
+type Engine struct {
+	sink  AudioSink
+	clock clock
+}
+
+// NewEngine creates an Engine that schedules hits through sink, paced by the
+// real wall clock.
 func NewEngine(sink AudioSink) *Engine {
-	return &Engine{sink: sink}
+	return &Engine{sink: sink, clock: realClock{}}
 }
 
 // Run opens the audio device once, then asks provider for each bar's hits,
@@ -58,6 +85,7 @@ func (e *Engine) Run(ctx context.Context, provider PatternProvider) error {
 	e.sink.Start()
 	defer e.sink.Teardown()
 
+	reference := e.clock.Now()
 	var barStart time.Duration
 	for bar := 0; ; bar++ {
 		select {
@@ -77,5 +105,9 @@ func (e *Engine) Run(ctx context.Context, provider PatternProvider) error {
 		}
 
 		barStart += time.Duration(stepsPerBar) * stepDuration
+
+		if err := e.clock.WaitUntil(reference.Add(barStart)); err != nil {
+			return err
+		}
 	}
 }
