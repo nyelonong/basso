@@ -58,8 +58,8 @@ Copied verbatim from the spec's Constraints section.
 | 2.1  | 2    | done | `21a0b2c`,`f4e7703`,`e0cabaa` — Hit/PatternProvider/AudioSink/atomixSink/Engine.Run; 3 tests pass; gates green |
 | 2.2  | 2    | done | `466d7a6`,`e86c396`,`0a1c320` — clock seam, ctx-aware bar wait; 5 tests pass in 0.09s; gates green; re-verified empirically (real clock: 1 fire scheduled in 602ms against a non-blocking provider, was 722k/50ms before the fix) |
 | 3.1  | 3    | done | `3ad5315`,`2b294cd` — StaticProvider transcribes m001 exactly; 7 total engine tests pass; gates green |
-| 4.1  | 4    | in-progress | dispatched docs/briefs/4.1-brief.md @a609234 (write-scope amended: +sink.go) |
-| 4.2  | 4    | in-progress | dispatched docs/briefs/4.2-brief.md @a609234 |
+| 4.1  | 4    | done | `c6ba736`,`201306d` — sink.go configures real mixer+path+start time; cmd/basso wired to Engine+StaticProvider+SIGINT; smoke green (device configures, ~105% CPU while running, clean SIGINT exit) |
+| 4.2  | 4    | done | `44f12c4`+6 more — vendored Fennel 1.6.1 runs directly on gopher-lua, no fallback needed; 3 tests pass; reproduces StaticProvider's m001 output exactly |
 | 5.1  | 5    | pending | — |
 | 6.1  | 6    | pending | — |
 
@@ -287,7 +287,33 @@ change to `Hit`/`Engine`). Missing `:velocity` → `1.0`.
 - [ ] RED+GREEN: `TestFennelProvider_HitDefaults`, `TestFennelProvider_TempoFunctions`
 - [ ] Wave gate: gates green
 
-**Wave 4 gate:** gates green; 4.1 smoke green (real audio, `m001` continuous); Fennel provider tests pass.
+**Wave 4 gate — CLOSED @83b3847:** `gofmt -l .`/`go vet ./...`/`go build ./...`/
+`go test ./...` all green. 4.1 smoke: controller ran the built binary as a
+real background process (not just the subagent's report) — device configures
+without error, ~105%/104% CPU sustained while running (consistent with the
+real-time Go-native sample mixer actually processing, confirmed identical
+with/without a since-reverted, incorrect controller edit — see below), clean
+exit on SIGINT. Could not literally listen for audible output in this
+environment; if you want to confirm audio plays, run `nix-shell --run 'go
+run ./cmd/basso'` yourself. 4.2: read `fennel.go`/`fennel_test.go` in full,
+confirmed the design (fresh gopher-lua VM re-eval per `Next` call, no
+caching), confirmed 3 tests pass and reproduce `StaticProvider`'s `m001`
+output exactly on Step/Sample/Velocity.
+
+Controller error caught and reverted during this gate: initially "fixed"
+`atomixSink.Start()` by re-adding an `atomix.Start()` call, based on a
+misreading of the demo comments as "Start = open the device." Reading the
+actual `gopkg.in/mix.v0` source showed `Start()` is literally `StartAt(time.Now())`
+— a pure epoch-time assignment, no device I/O — while `Configure()` is what
+opens the device via `bind.Configure()`. The edit would have silently
+overwritten the deliberate 1-second lead-in with "now." Reverted; 4.1's
+original delivery was correct. Also checked (empirically, not by
+inspection) whether the spec's documented `.fnl` example — `(fn pattern
+[bar] ...)` as the last form, no trailing bare `pattern` reference — actually
+works with 4.2's implementation: confirmed yes, it does (a scratch test,
+discarded after use, returned hits successfully). The extra trailing
+`pattern` line in 4.2's own test fixtures is redundant, not required; no
+real spec/implementation contract gap here.
 
 ---
 
