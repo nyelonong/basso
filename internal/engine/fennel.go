@@ -260,13 +260,24 @@ func (fp *FennelProvider) Next(bar int) ([]Hit, int, int, error) {
 			lengthValue = int(lua.LVAsNumber(length))
 		}
 
+		instrument := row.RawGetString("instrument")
+		instrumentValue := lua.LVAsString(instrument)
+		if note != lua.LNil && instrument == lua.LNil {
+			// :note hits default to "bass" when :instrument is omitted, so
+			// every existing pattern keeps working unchanged. Not validated
+			// here — whether a given name is a real instrument is beepSink's
+			// call at play time, same precedent as a malformed :note.
+			instrumentValue = "bass"
+		}
+
 		hits = append(hits, Hit{
-			Step:     int(lua.LVAsNumber(row.RawGetString("step"))),
-			Sample:   lua.LVAsString(sample),
-			Note:     lua.LVAsString(note),
-			Length:   lengthValue,
-			Pan:      panValue,
-			Velocity: velocityValue,
+			Step:       int(lua.LVAsNumber(row.RawGetString("step"))),
+			Sample:     lua.LVAsString(sample),
+			Note:       lua.LVAsString(note),
+			Instrument: instrumentValue,
+			Length:     lengthValue,
+			Pan:        panValue,
+			Velocity:   velocityValue,
 		})
 	}
 
