@@ -18,27 +18,27 @@ scripts evaluated by an embedded gopher-lua interpreter.
 
 ## Building
 
+Plain Go, no devshell needed — a standard Go toolchain matching `go.mod`'s
+`go 1.26.5` directive is all that's required.
+
 - Module: `github.com/nyelonong/basso`.
-- Enter the devshell: `nix-shell` (provides Go — see `shell.nix`). **Do not
-  use Homebrew.**
-- Build: `nix-shell --run 'go build ./...'` (or `make build`).
+- Build: `go build ./...` (or `make build`).
 - Install: `make install` — `go install ./cmd/basso`, then `basso play
-  <file.fnl>` works directly, no nix-shell needed at runtime.
+  <file.fnl>` works directly.
 - Gates: `gofmt -l .`, `go vet ./...`, `go test ./...` (see
   `docs/agents/galdr.md`; or `make gates`).
-- Run: `nix-shell --run 'go run ./cmd/basso play <file.fnl>'` (or `make run
-  FILE=<file.fnl>`).
+- Run: `go run ./cmd/basso play <file.fnl>` (or `make run FILE=<file.fnl>`).
 
 ## System dependencies
 
-None beyond Go. The build is pure Go, `CGO_ENABLED=0` clean — confirmed by
-building and running with it explicitly set. `github.com/gopxl/beep/v2`'s
-device backend (`ebitengine/oto` via `ebitengine/purego`) talks to the OS
-audio API directly via dlopen-based FFI, no cgo, no native libs. `shell.nix`
-used to provide SDL2/PortAudio/sox/pkg-config for the pre-rebuild
-`go-atomix`/early `gopkg.in/mix.v0` era; removed once the `gopxl/beep/v2`
-swap made them dead weight (verified: build and real playback both work with
-them absent).
+None. The build is pure Go, `CGO_ENABLED=0` clean — confirmed by building
+and running with it explicitly set, and outside any devshell. `github.com/
+gopxl/beep/v2`'s device backend (`ebitengine/oto` via `ebitengine/purego`)
+talks to the OS audio API directly via dlopen-based FFI, no cgo, no native
+libs. This project used to need a nix devshell (`shell.nix`, now removed)
+for SDL2/PortAudio/sox/pkg-config, from the pre-rebuild `go-atomix`/early
+`gopkg.in/mix.v0` era — dead weight once the `gopxl/beep/v2` swap landed,
+confirmed and removed.
 
 ## Architecture
 

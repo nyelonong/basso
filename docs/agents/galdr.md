@@ -2,7 +2,7 @@
 
 ## Gates
 
-Task-level and gate-level commands. Run inside `nix-shell` (or `make gates`).
+Task-level and gate-level commands. Plain Go, no devshell needed (or `make gates`).
 
 - `gofmt -l .`
 - `go vet ./...`
@@ -32,18 +32,17 @@ commands pass on a clean checkout.
 ## Worktree notes
 
 - Language: Go, pure-Go dependency tree, `CGO_ENABLED=0` clean — a fresh
-  worktree just needs `nix-shell` (provides Go) or a system Go toolchain, no
-  other setup.
+  worktree just needs a system Go toolchain matching `go.mod`'s `go 1.26.5`
+  directive, no devshell, no other setup.
 - No env files to copy.
 - Service dependencies: none. `github.com/gopxl/beep/v2`'s audio backend
   (`ebitengine/oto`/`purego`) talks to the OS audio API directly via
-  dlopen-based FFI — no native libs, no nix packages beyond Go itself. No
-  background services / docker compose.
+  dlopen-based FFI — no native libs. No background services / docker
+  compose.
 
 ## Smoke
 
-- Launch: `nix-shell --run 'go run ./cmd/basso play patterns/basic-groove.fnl'`
-  (or `make run`)
+- Launch: `go run ./cmd/basso play patterns/basic-groove.fnl` (or `make run`)
 - Base URL: none — output is audio played to the sound device, plus a printed
   `bar <n> bpm <bpm>` line per bar.
 - Test account / seed data: none.

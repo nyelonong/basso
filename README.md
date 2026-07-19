@@ -1,20 +1,31 @@
 # basso
-Music for better life
+
+A live-coding player: a persistent process that plays a Fennel pattern
+continuously and reloads it at the next bar boundary when you save the
+source file, with no audio restart.
+
+### Install
+
+    make install
+
+Installs to `$(go env GOPATH)/bin/basso`. No other dependencies — pure Go,
+no cgo, no native libraries.
 
 ### Play
 
-    go run const.go [file].go
+    basso play patterns/basic-groove.fnl
 
-### Dependencies
+Or without installing:
 
-#### Atomix
+    make run FILE=patterns/basic-groove.fnl
 
-    go get github.com/outrightmental/go-atomix
+Edit the `.fnl` file and save while it's playing — the change takes effect
+at the next bar. Ctrl-C to stop.
 
-#### SDL2
+### Develop
 
-    sudo apt-get install libsdl2-dev
-
-#### Portaudio
-
-    sudo apt-get install portaudio19-dev libjack-jackd2-dev libmpg123-dev
+    make build   # bin/basso
+    make test
+    make vet
+    make fmt     # gofmt -l .
+    make gates   # fmt + vet + test
