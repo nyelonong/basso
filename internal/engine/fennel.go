@@ -3,6 +3,7 @@ package engine
 import (
 	_ "embed"
 	"fmt"
+	"math/rand"
 
 	lua "github.com/yuin/gopher-lua"
 )
@@ -80,11 +81,24 @@ func (fp *FennelProvider) Next(bar int) ([]Hit, int, int, error) {
 		if !ok {
 			return nil, 0, 0, fmt.Errorf("fennel: hit %d is not a table", i)
 		}
+
+		pan := row.RawGetString("pan")
+		panValue := rand.Float64()*2 - 1 // default: random in [-1,1], same precedent as StaticProvider (3.1)
+		if pan != lua.LNil {
+			panValue = float64(lua.LVAsNumber(pan))
+		}
+
+		velocity := row.RawGetString("velocity")
+		velocityValue := 1.0 // default
+		if velocity != lua.LNil {
+			velocityValue = float64(lua.LVAsNumber(velocity))
+		}
+
 		hits = append(hits, Hit{
 			Step:     int(lua.LVAsNumber(row.RawGetString("step"))),
 			Sample:   lua.LVAsString(row.RawGetString("sample")),
-			Pan:      float64(lua.LVAsNumber(row.RawGetString("pan"))),
-			Velocity: float64(lua.LVAsNumber(row.RawGetString("velocity"))),
+			Pan:      panValue,
+			Velocity: velocityValue,
 		})
 	}
 
