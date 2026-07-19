@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"fmt"
 	"math/rand"
+	"sync"
 
 	lua "github.com/yuin/gopher-lua"
 )
@@ -16,8 +17,18 @@ var fennelCompilerSource string
 
 // FennelProvider is a PatternProvider that compiles and evaluates a Fennel
 // (Lisp) script through an embedded gopher-lua VM.
+//
+// FennelProvider itself is not safe for concurrent use in general (Next is
+// only ever meant to be called by a single goroutine, per PatternProvider's
+// contract), but the pending-source field below is: a file-backed
+// FennelProvider's watcher goroutine (added in a later change) writes it
+// while Next (called from Engine.Run's goroutine) reads it, so pendingMu
+// guards that one field explicitly.
 type FennelProvider struct {
 	source string
+
+	pendingMu sync.Mutex
+	pending   *string
 }
 
 // New constructs a FennelProvider holding source. It does not compile or
@@ -27,6 +38,25 @@ func New(source string) (*FennelProvider, error) {
 	return &FennelProvider{source: source}, nil
 }
 
+// setPendingSource stages source to be swapped in at the start of the next
+// Next call. It is also used directly by tests as a deterministic hook for
+// this apply logic, without needing a real file or a real fsnotify event.
+func (fp *FennelProvider) setPendingSource(source string) {
+	fp.pendingMu.Lock()
+	defer fp.pendingMu.Unlock()
+	fp.pending = &source
+}
+
+// takePendingSource returns the staged pending source, if any, clearing it,
+// so a second call before the next setPendingSource returns nil.
+func (fp *FennelProvider) takePendingSource() *string {
+	fp.pendingMu.Lock()
+	defer fp.pendingMu.Unlock()
+	pending := fp.pending
+	fp.pending = nil
+	return pending
+}
+
 // Next re-evaluates fp's currently held Fennel source in a fresh gopher-lua
 // VM state on every call — never compiled once and cached — so a later hot
 // reload can simply swap the held source string without changing Next's
@@ -34,6 +64,10 @@ func New(source string) (*FennelProvider, error) {
 // (whose final top-level form must be a reference to the script's pattern
 // function), calls pattern(bar), and maps the returned hit tables to Hits.
 func (fp *FennelProvider) Next(bar int) ([]Hit, int, int, error) {
+	if pending := fp.takePendingSource(); pending != nil {
+		fp.source = *pending
+	}
+
 	L := lua.NewState()
 	defer L.Close()
 
