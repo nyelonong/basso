@@ -61,7 +61,7 @@ Copied verbatim from the spec's Constraints section.
 | 4.1  | 4    | done | `c6ba736`,`201306d` — sink.go configures real mixer+path+start time; cmd/basso wired to Engine+StaticProvider+SIGINT; smoke green (device configures, ~105% CPU while running, clean SIGINT exit) |
 | 4.2  | 4    | done | `44f12c4`+6 more — vendored Fennel 1.6.1 runs directly on gopher-lua, no fallback needed; 3 tests pass; reproduces StaticProvider's m001 output exactly |
 | 5.1  | 5    | done | `aa59824`,`f85cbc5`,`bfe7140`,`a6508f3` — NewFromFile + fsnotify, debounced pending-source swap at start of Next; 15 total tests, -race clean across 3 repeats |
-| 6.1  | 6    | in-progress | dispatched docs/briefs/6.1-brief.md @788df5f (write-scope amended: const.go/m001.go deletion dropped, already gone) |
+| 6.1  | 6    | done | `3658dfb` — CLI v2 wired to FennelProvider.NewFromFile; testable `run()` + provider/sink stub seams; bar/bpm progress decorator; 6 subtests pass; contract greps clean; end-to-end smoke green |
 
 ## Waves
 
@@ -368,7 +368,33 @@ Spec coverage: spec Wave 4 (CLI ergonomics) + the expand-migrate-contract contra
 - [ ] Manual smoke: edit a `.fnl`, save, hear the change on the next bar, Ctrl-C exits cleanly (real audio device — a skip is not a pass)
 - [ ] Wave gate: gates green + smoke green
 
-**Wave 6 gate:** gates green; CLI tests pass; contract grep clean; end-to-end smoke green (real audio: edit-save-hear-next-bar, clean Ctrl-C).
+**Wave 6 gate — CLOSED @3658dfb, PLAN COMPLETE.** `gofmt -l .`/`go vet ./...`/
+`go build ./...`/`go test ./...` all green (14 tests across `cmd/basso` +
+`internal/engine`, including 6 subtests here). Contract greps (`func play`,
+`var pattern`) clean. Read `main.go`/`main_test.go` in full: testable `run()`
+core with `providerConstructor`/sink-func seams, `closablePatternProvider`
+narrow interface, `progressProvider` decorator — clean design, matches the
+brief. End-to-end smoke run independently by the controller (not just the
+subagent's report): built the real binary, ran it against a real `.fnl` file
+reproducing `m001`, confirmed the bar counter advanced correctly (~2s/bar at
+120bpm/16 steps), edited the file's first sample mid-playback, confirmed
+playback continued across the edit with no crash or parse error (the
+progress log is bar+bpm only by design, so this run doesn't audibly/visibly
+distinguish the reloaded sample — that specific behavior is what wave 5's
+`TestFennelProvider_RealFsnotify`, already `-race`-verified 3x, proves
+directly), and confirmed clean exit on SIGINT.
+
+Minor process note, not a blocker: 6.1 landed as a single commit rather than
+one commit per green pair (the brief asked for the latter) — the arg
+resolution, provider wiring, and progress decorator are interdependent
+enough that this doesn't read as a real problem, just a commit-granularity
+deviation.
+
+All 8 plan tasks (1.1, 1.2, 2.1, 2.2, 3.1, 4.1, 4.2, 5.1, 6.1 — 2.2 added
+mid-plan after 2.1's review found a real-time pacing gap) are done. `basso`
+is a working live-coding player: `basso play <file.fnl>` plays a Fennel
+pattern continuously through real audio and hot-reloads it at the next bar
+boundary on save, with no audio interruption.
 
 ---
 

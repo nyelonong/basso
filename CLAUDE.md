@@ -4,19 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`basso` is being built into a **live-coding player**: a persistent process that
-plays a Fennel pattern continuously and reloads it at the next bar boundary when
-the source file is saved, with no audio restart. Audio is triggered through
+`basso` is a **live-coding player**: a persistent process that plays a
+Fennel pattern continuously and reloads it at the next bar boundary when the
+source file is saved, with no audio restart. Audio is triggered through
 `gopkg.in/mix.v0` (the successor to `github.com/outrightmental/go-atomix`; source
 repo at `github.com/go-mix/mix`, which declares its module path as
 `gopkg.in/mix.v0`), imported aliased as `atomix`. Patterns are Fennel (Lisp)
 scripts evaluated by an embedded gopher-lua interpreter.
 
-> **Status: mid-rebuild.** Spec: `docs/specs/2026-07-19-live-coding-player.md`
-> (lifecycle: in-progress). Plan: `docs/plans/2026-07-19-live-coding-player.md`.
-> The legacy `const.go` / `m001.go` play-once engine has been removed (early
-> contract); the new `cmd/basso` entry and `internal/engine` packages are being
-> built per the plan. There is no runnable binary yet.
+> **Status: done.** Spec: `docs/specs/2026-07-19-live-coding-player.md`
+> (lifecycle: done). Plan: `docs/plans/2026-07-19-live-coding-player.md`
+> (all 8 tasks across 6 waves complete). `basso play <file.fnl>` (alias:
+> `basso <file.fnl>`) is a runnable binary.
 
 ## Building
 
@@ -25,7 +24,7 @@ scripts evaluated by an embedded gopher-lua interpreter.
   see `shell.nix`). **Do not use Homebrew.**
 - Build: `nix-shell --run 'go build ./...'`
 - Gates: `gofmt -l .`, `go vet ./...`, `go test ./...` (see `docs/agents/galdr.md`).
-- Runnable `basso` binary lands in plan wave 4 (CLI v1) / wave 6 (CLI v2).
+- Run: `nix-shell --run 'go run ./cmd/basso play <file.fnl>'`.
 
 ## System dependencies
 
@@ -33,9 +32,9 @@ Provided by the nix devshell (`shell.nix`), not brew: SDL2, PortAudio, sox
 (libsox — the `gopkg.in/mix.v0` bind package transitively imports `go-sox`, a
 cgo dep), pkg-config, and Go. The audio library uses cgo via these.
 
-## Architecture (target)
+## Architecture
 
-- `cmd/basso/main.go` — CLI entry (`basso play <file.fnl>`), built in waves 4/6.
+- `cmd/basso/main.go` — CLI entry (`basso play <file.fnl>`, alias `basso <file.fnl>`).
 - `internal/engine/` — the persistent bar-loop `Engine`; `Hit` /
   `PatternProvider` / `AudioSink` types; providers `StaticProvider`
   (regression fixture holding the `m001` pattern as data) and `FennelProvider`

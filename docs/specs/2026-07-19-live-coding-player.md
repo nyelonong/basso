@@ -1,6 +1,6 @@
 # Spec: basso live-coding player
 
-Lifecycle status: in-progress
+Lifecycle status: done
 
 ## Goal
 
