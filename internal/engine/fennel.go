@@ -225,6 +225,12 @@ func (fp *FennelProvider) Next(bar int) ([]Hit, int, int, error) {
 			return nil, 0, 0, fmt.Errorf("fennel: hit %d is not a table", i)
 		}
 
+		sample := row.RawGetString("sample")
+		note := row.RawGetString("note")
+		if (sample != lua.LNil) == (note != lua.LNil) {
+			return nil, 0, 0, fmt.Errorf("fennel: hit %d must have exactly one of :sample or :note", i)
+		}
+
 		pan := row.RawGetString("pan")
 		panValue := rand.Float64()*2 - 1 // default: random in [-1,1], same precedent as StaticProvider (3.1)
 		if pan != lua.LNil {
@@ -237,9 +243,17 @@ func (fp *FennelProvider) Next(bar int) ([]Hit, int, int, error) {
 			velocityValue = float64(lua.LVAsNumber(velocity))
 		}
 
+		length := row.RawGetString("length")
+		lengthValue := 1 // default: a short one-step note; meaningful for :note hits only
+		if length != lua.LNil {
+			lengthValue = int(lua.LVAsNumber(length))
+		}
+
 		hits = append(hits, Hit{
 			Step:     int(lua.LVAsNumber(row.RawGetString("step"))),
-			Sample:   lua.LVAsString(row.RawGetString("sample")),
+			Sample:   lua.LVAsString(sample),
+			Note:     lua.LVAsString(note),
+			Length:   lengthValue,
 			Pan:      panValue,
 			Velocity: velocityValue,
 		})

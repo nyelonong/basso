@@ -102,6 +102,100 @@ pattern
 	}
 }
 
+// TestFennelProvider_MapsNoteHit verifies that a hit table with :note and
+// :length (instead of :sample) maps to a Hit with Note/Length set and
+// Sample empty.
+func TestFennelProvider_MapsNoteHit(t *testing.T) {
+	source := `
+(fn pattern [bar]
+  [{:step 3 :note "C2" :length 4}])
+
+pattern
+`
+
+	provider, err := New(source)
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+
+	hits, _, _, err := provider.Next(0)
+	if err != nil {
+		t.Fatalf("Next(0) error = %v, want nil", err)
+	}
+	if len(hits) != 1 {
+		t.Fatalf("len(hits) = %d, want 1", len(hits))
+	}
+
+	got := hits[0]
+	if got.Step != 3 {
+		t.Errorf("Step = %d, want 3", got.Step)
+	}
+	if got.Note != "C2" {
+		t.Errorf("Note = %q, want %q", got.Note, "C2")
+	}
+	if got.Sample != "" {
+		t.Errorf("Sample = %q, want empty", got.Sample)
+	}
+	if got.Length != 4 {
+		t.Errorf("Length = %d, want 4", got.Length)
+	}
+}
+
+// TestFennelProvider_NoteHitDefaultsLength verifies that a :note hit
+// omitting :length defaults to Length: 1.
+func TestFennelProvider_NoteHitDefaultsLength(t *testing.T) {
+	source := `
+(fn pattern [bar]
+  [{:step 0 :note "A2"}])
+
+pattern
+`
+
+	provider, err := New(source)
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+
+	hits, _, _, err := provider.Next(0)
+	if err != nil {
+		t.Fatalf("Next(0) error = %v, want nil", err)
+	}
+	if len(hits) != 1 {
+		t.Fatalf("len(hits) = %d, want 1", len(hits))
+	}
+	if hits[0].Length != 1 {
+		t.Errorf("Length = %d, want 1", hits[0].Length)
+	}
+}
+
+// TestFennelProvider_HitRequiresExactlyOneOfSampleOrNote verifies that a hit
+// table with both :sample and :note, or with neither, makes Next return an
+// error rather than a malformed Hit.
+func TestFennelProvider_HitRequiresExactlyOneOfSampleOrNote(t *testing.T) {
+	tests := []struct {
+		name string
+		hit  string
+	}{
+		{name: "both sample and note", hit: `{:step 0 :sample "kick2.wav" :note "C2"}`},
+		{name: "neither sample nor note", hit: `{:step 0 :velocity 1.0}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := "(fn pattern [bar]\n  [" + tt.hit + "])\n\npattern\n"
+
+			provider, err := New(source)
+			if err != nil {
+				t.Fatalf("New() error = %v, want nil", err)
+			}
+
+			if _, _, _, err := provider.Next(0); err == nil {
+				t.Fatalf("Next(0) error = nil, want error")
+			}
+		})
+	}
+}
+
 // TestFennelProvider_TempoFunctions verifies that a script calling (bpm 140)
 // and (steps 12) makes Next return bpm == 140 and stepsPerBar == 12.
 func TestFennelProvider_TempoFunctions(t *testing.T) {
