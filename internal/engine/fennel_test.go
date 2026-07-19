@@ -65,3 +65,39 @@ pattern
 		}
 	}
 }
+
+// TestFennelProvider_HitDefaults verifies that a hit table omitting :pan
+// gets a random value in [-1,1], and a hit table omitting :velocity gets
+// 1.0, matching StaticProvider's Go-level defaulting precedent (3.1).
+func TestFennelProvider_HitDefaults(t *testing.T) {
+	source := `
+(fn pattern [bar]
+  [{:step 0 :sample "kick2.wav" :velocity 0.5}
+   {:step 1 :sample "snare.wav" :pan 0.3}])
+
+pattern
+`
+
+	provider, err := New(source)
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+
+	hits, _, _, err := provider.Next(0)
+	if err != nil {
+		t.Fatalf("Next(0) error = %v, want nil", err)
+	}
+	if len(hits) != 2 {
+		t.Fatalf("len(hits) = %d, want 2", len(hits))
+	}
+
+	// hits[0] omits :pan.
+	if hits[0].Pan < -1.0 || hits[0].Pan > 1.0 {
+		t.Errorf("hits[0].Pan = %v, want value in range [-1, 1]", hits[0].Pan)
+	}
+
+	// hits[1] omits :velocity.
+	if hits[1].Velocity != 1.0 {
+		t.Errorf("hits[1].Velocity = %v, want 1.0", hits[1].Velocity)
+	}
+}
