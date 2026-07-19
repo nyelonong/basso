@@ -61,7 +61,7 @@ Copied verbatim from the spec's Constraints section.
 | 4.1  | 4    | done | `c6ba736`,`201306d` — sink.go configures real mixer+path+start time; cmd/basso wired to Engine+StaticProvider+SIGINT; smoke green (device configures, ~105% CPU while running, clean SIGINT exit) |
 | 4.2  | 4    | done | `44f12c4`+6 more — vendored Fennel 1.6.1 runs directly on gopher-lua, no fallback needed; 3 tests pass; reproduces StaticProvider's m001 output exactly |
 | 5.1  | 5    | done | `aa59824`,`f85cbc5`,`bfe7140`,`a6508f3` — NewFromFile + fsnotify, debounced pending-source swap at start of Next; 15 total tests, -race clean across 3 repeats |
-| 6.1  | 6    | pending | — |
+| 6.1  | 6    | in-progress | dispatched docs/briefs/6.1-brief.md @788df5f (write-scope amended: const.go/m001.go deletion dropped, already gone) |
 
 ## Waves
 
