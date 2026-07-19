@@ -2,6 +2,8 @@ package engine
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -136,5 +138,47 @@ func TestFennelProvider_NoAudioRestartOnReload(t *testing.T) {
 	}
 	if sink.teardownCalls != 1 {
 		t.Errorf("teardownCalls (final) = %d, want 1", sink.teardownCalls)
+	}
+}
+
+// TestFennelProvider_RealFsnotify proves the real fsnotify integration:
+// NewFromFile watches a real temp file, and a real os.WriteFile edit to it
+// eventually (after the debounce) becomes visible to Next, without needing
+// the setPendingSource test hook.
+func TestFennelProvider_RealFsnotify(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "pattern.fnl")
+	if err := os.WriteFile(path, []byte(fennelSourceSample("a.wav")), 0o644); err != nil {
+		t.Fatalf("os.WriteFile(initial) error = %v, want nil", err)
+	}
+
+	provider, err := NewFromFile(path)
+	if err != nil {
+		t.Fatalf("NewFromFile() error = %v, want nil", err)
+	}
+	defer provider.Close()
+
+	hits0, _, _, err := provider.Next(0)
+	if err != nil {
+		t.Fatalf("Next(0) error = %v, want nil", err)
+	}
+	if len(hits0) != 1 || hits0[0].Sample != "a.wav" {
+		t.Fatalf("Next(0) hits = %+v, want single hit sample a.wav", hits0)
+	}
+
+	if err := os.WriteFile(path, []byte(fennelSourceSample("b.wav")), 0o644); err != nil {
+		t.Fatalf("os.WriteFile(updated) error = %v, want nil", err)
+	}
+
+	// Real debounce wait: this is the one test explicitly proving the real
+	// fsnotify integration, so a real sleep here is expected and fine.
+	time.Sleep(300 * time.Millisecond)
+
+	hits1, _, _, err := provider.Next(1)
+	if err != nil {
+		t.Fatalf("Next(1) error = %v, want nil", err)
+	}
+	if len(hits1) != 1 || hits1[0].Sample != "b.wav" {
+		t.Fatalf("Next(1) hits = %+v, want single hit sample b.wav (real fsnotify reload should have applied)", hits1)
 	}
 }
