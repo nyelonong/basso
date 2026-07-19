@@ -99,13 +99,14 @@ const bassReleaseFraction = 0.2
 // splitEnvelope divides totalN samples into an attack ramp, a plain sustain
 // portion, and a release ramp, clamped so attackN+releaseN never exceeds
 // totalN (a very short note must not get overlapping/negative segments).
-// The release is capped at both bassMaxRelease and bassReleaseFraction of
-// totalN, whichever is smaller; the attack is capped to whatever's left
-// after that.
-func splitEnvelope(totalN int) (attackN, releaseN int) {
-	attackN = deviceSampleRate.N(bassAttack)
-	releaseN = deviceSampleRate.N(bassMaxRelease)
-	if capped := int(float64(totalN) * bassReleaseFraction); releaseN > capped {
+// The release is capped at both maxRelease and releaseFraction of totalN,
+// whichever is smaller; the attack is capped to whatever's left after that.
+// attack/maxRelease/releaseFraction are per-instrument (bass, brass, ...),
+// letting each voice shape its own envelope through the same clamping logic.
+func splitEnvelope(totalN int, attack, maxRelease time.Duration, releaseFraction float64) (attackN, releaseN int) {
+	attackN = deviceSampleRate.N(attack)
+	releaseN = deviceSampleRate.N(maxRelease)
+	if capped := int(float64(totalN) * releaseFraction); releaseN > capped {
 		releaseN = capped
 	}
 	if releaseN < 0 {
@@ -133,7 +134,7 @@ func synthesizeNote(freq float64, sustain time.Duration) (beep.Streamer, error) 
 	}
 
 	totalN := deviceSampleRate.N(sustain)
-	attackN, releaseN := splitEnvelope(totalN)
+	attackN, releaseN := splitEnvelope(totalN, bassAttack, bassMaxRelease, bassReleaseFraction)
 	sustainN := totalN - attackN - releaseN
 
 	var segments []beep.Streamer
