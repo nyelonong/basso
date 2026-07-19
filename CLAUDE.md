@@ -4,39 +4,57 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`basso` is a tiny Go program that plays drum-machine patterns from WAV samples using the `github.com/outrightmental/go-atomix` audio library. A "song" is a Go source file containing a pattern; running it plays the loop out the speakers.
+`basso` is being built into a **live-coding player**: a persistent process that
+plays a Fennel pattern continuously and reloads it at the next bar boundary when
+the source file is saved, with no audio restart. Audio is triggered through
+`gopkg.in/mix.v0` (the successor to `github.com/outrightmental/go-atomix`; source
+repo at `github.com/go-mix/mix`, which declares its module path as
+`gopkg.in/mix.v0`), imported aliased as `atomix`. Patterns are Fennel (Lisp)
+scripts evaluated by an embedded gopher-lua interpreter.
 
-## Running
+> **Status: mid-rebuild.** Spec: `docs/specs/2026-07-19-live-coding-player.md`
+> (lifecycle: in-progress). Plan: `docs/plans/2026-07-19-live-coding-player.md`.
+> The legacy `const.go` / `m001.go` play-once engine has been removed (early
+> contract); the new `cmd/basso` entry and `internal/engine` packages are being
+> built per the plan. There is no runnable binary yet.
 
-There is no `go.mod` and no build system — the program is run by passing source files explicitly to `go run`:
+## Building
 
-```
-go run const.go m001.go
-```
+- Module: `github.com/nyelonong/basso`.
+- Enter the devshell: `nix-shell` (provides SDL2, PortAudio, sox, pkg-config, Go —
+  see `shell.nix`). **Do not use Homebrew.**
+- Build: `nix-shell --run 'go build ./...'`
+- Gates: `gofmt -l .`, `go vet ./...`, `go test ./...` (see `docs/agents/galdr.md`).
+- Runnable `basso` binary lands in plan wave 4 (CLI v1) / wave 6 (CLI v2).
 
-`const.go` holds the shared asset constants and the `play(...)` engine. A song file (e.g. `m001.go`) defines `pattern`, `main()`, and calls `play`. To add a new song, create a new `mNNN.go` with its own `main` and run `go run const.go <newfile>.go`. Never put two `main` packages' `main` functions in the same `go run` invocation.
+## System dependencies
 
-## System dependencies (required before it will build/run)
+Provided by the nix devshell (`shell.nix`), not brew: SDL2, PortAudio, sox
+(libsox — the `gopkg.in/mix.v0` bind package transitively imports `go-sox`, a
+cgo dep), pkg-config, and Go. The audio library uses cgo via these.
 
-- SDL2: `sudo apt-get install libsdl2-dev`
-- PortAudio + friends: `sudo apt-get install portaudio19-dev libjack-jackd2-dev libmpg123-dev`
-- Go atomix: `go get github.com/outrightmental/go-atomix`
+## Architecture (target)
 
-The platform is darwin in this checkout but the README's install commands are Debian/Ubuntu. On this machine, get the system libraries through **nix**, not Homebrew — e.g. `nix-shell -p SDL2 portaudio --run 'go run const.go m001.go'`, or a `shell.nix`/flake devshell.
-
-## Architecture
-
-All files are `package main` in the repo root — there are no subpackages. The split is by role, not by package:
-
-- **`const.go`** — engine. Defines the sample-path/asset-name constants (`path`, `kick1`, `snare`, ...), the audio spec (`sampleHz = 48000`, stereo F32), and `play(pattern []string, loops int, step time.Duration)`. `play` schedules each pattern step via `atomix.SetFire(...)` at absolute times computed from `step`, opens the audio device, then blocks until `atomix.FireCount()` drains. Pan position is randomized per hit.
-- **`mNNN.go`** — a song: a `pattern` (slice of the constant names from `const.go`) and a `main` that sets bpm/loops and computes `step = time.Minute / (bpm*4)` (sixteenth-note resolution) before calling `play`.
-
-The WAV samples live in `sound/808/` and are loaded by `go-atomix` from the path set by `atomix.SetSoundsPath(path)`. Pattern entries are string constants that must match WAV filenames in that directory.
+- `cmd/basso/main.go` — CLI entry (`basso play <file.fnl>`), built in waves 4/6.
+- `internal/engine/` — the persistent bar-loop `Engine`; `Hit` /
+  `PatternProvider` / `AudioSink` types; providers `StaticProvider`
+  (regression fixture holding the `m001` pattern as data) and `FennelProvider`
+  (gopher-lua + vendored Fennel compiler; owns bar-granular hot reload via
+  fsnotify). `AudioSink` is a seam with a real `atomixSink` (wrapping
+  `gopkg.in/mix.v0`) and a `fakeSink` for tests.
+- `sound/808/` — WAV samples, loaded by `gopkg.in/mix.v0` via
+  `atomix.SetSoundsPath`.
+- Timing: `stepDuration = time.Minute / (bpm*4)` → sixteenth-note resolution; 16
+  steps = one bar. The engine re-evaluates the Fennel script and calls
+  `pattern(bar)` once per bar boundary; reloads apply only at that boundary.
 
 ## Conventions
 
-- A pattern step duration of `time.Minute / (bpm*4)` means each slice index is one sixteenth note; a 16-entry pattern is one bar at the given bpm.
-- `atomix.StartAt` plus a 1-second lead padding is intentional — keep it so the audio engine is ready before the first fire.
+- Hot reload is bar-granular: pattern changes take effect at the next bar
+  boundary, never mid-bar. The audio device is opened once at startup and held
+  open across reloads.
+- Pure-Go app code only (no cgo in app code); the native audio libs come from
+  the nix devshell.
 
 <!-- galdr:start -->
 ## galdr

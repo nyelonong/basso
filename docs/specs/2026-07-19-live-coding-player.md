@@ -1,6 +1,6 @@
 # Spec: basso live-coding player
 
-Lifecycle status: planned
+Lifecycle status: in-progress
 
 ## Goal
 
@@ -36,8 +36,8 @@ skill; written as rules.
   and cross-platform. The only native deps are the system audio libraries SDL2
   and PortAudio, provided by a nix devshell (`shell.nix` or flake), **not brew**.
 - **Module path is `github.com/nyelonong/basso`.** The audio dependency is
-  `github.com/go-mix/mix`, imported aliased as `atomix` so existing call sites
-  stay unchanged.
+  `gopkg.in/mix.v0`, imported aliased as `atomix` in the engine's audio
+  sink.
 - **Hot reload is bar-granular.** Pattern changes take effect at the next bar
   boundary, never mid-bar. Do not re-evaluate the script mid-bar.
 - **The audio device is opened once at startup and held open for the process
@@ -151,7 +151,7 @@ cleanly.
 ### Wave 0 — Project bootstrap
 
 - `go.mod` exists: module `github.com/nyelonong/basso`.
-- Deps fetched: `github.com/go-mix/mix`, `github.com/yuin/gopher-lua`,
+- Deps fetched: `gopkg.in/mix.v0`, `github.com/yuin/gopher-lua`,
   `github.com/fsnotify/fsnotify`, and the Fennel compiler (vendored or fetched).
 - A nix devshell (`shell.nix` or flake) provides SDL2 + PortAudio so
   `nix-shell --run 'go build ./...'` works without brew.

@@ -10,7 +10,7 @@ file is saved, with no audio restart. Implements the spec at
 ## Architecture
 
 - **Module** `github.com/nyelonong/basso`, built with the nix devshell (SDL2 +
-  PortAudio). Pure-Go deps only: `github.com/go-mix/mix` (audio, imported
+  PortAudio). Pure-Go deps only: `gopkg.in/mix.v0` (audio, imported
   aliased as `atomix`), `github.com/yuin/gopher-lua` (Lua VM),
   `github.com/fsnotify/fsnotify` (file watch). The Fennel compiler is vendored
   as a Lua file loaded into the gopher-lua VM.
@@ -35,8 +35,8 @@ Copied verbatim from the spec's Constraints section.
   and cross-platform. The only native deps are the system audio libraries SDL2
   and PortAudio, provided by a nix devshell (`shell.nix` or flake), **not brew**.
 - **Module path is `github.com/nyelonong/basso`.** The audio dependency is
-  `github.com/go-mix/mix`, imported aliased as `atomix` so existing call sites
-  stay unchanged.
+  `gopkg.in/mix.v0`, imported aliased as `atomix` in the engine's audio
+  sink.
 - **Hot reload is bar-granular.** Pattern changes take effect at the next bar
   boundary, never mid-bar. Do not re-evaluate the script mid-bar.
 - **The audio device is opened once at startup and held open for the process
@@ -72,14 +72,14 @@ Spec coverage: spec Wave 0 (project bootstrap).
 **Files:** Create `go.mod`, `go.sum`
 **Write-scope:** `go.mod`, `go.sum`
 **Consumes:** nothing
-**Produces:** module `github.com/nyelonong/basso` with deps `github.com/go-mix/mix`, `github.com/yuin/gopher-lua`, `github.com/fsnotify/fsnotify` — used by 2.1, 4.2, 5.1
+**Produces:** module `github.com/nyelonong/basso` with deps `gopkg.in/mix.v0`, `github.com/yuin/gopher-lua`, `github.com/fsnotify/fsnotify` — used by 2.1, 4.2, 5.1
 **Seams:** none (declarative setup)
 **Tests:** none (wave gate proves build)
 - [ ] `go mod init github.com/nyelonong/basso`
-- [ ] `go get github.com/go-mix/mix` (import aliased as `atomix`)
+- [ ] `go get gopkg.in/mix.v0` (import aliased as `atomix`)
 - [ ] `go get github.com/yuin/gopher-lua`
 - [ ] `go get github.com/fsnotify/fsnotify`
-- [ ] Confirm existing `const.go`/`m001.go` still compile against `go-mix/mix`: `go build ./...` succeeds
+- [ ] Legacy `const.go`/`m001.go` removed (early contract); `go build ./...` succeeds on the legacy-free module
 - [ ] Wave gate: `gofmt -l .` clean, `go vet ./...` clean, `go test ./...` passes
 
 #### Task 1.2: nix devshell
@@ -104,14 +104,14 @@ Spec coverage: spec Wave 1 (persistent engine + bar loop, PatternProvider, Hit).
 #### Task 2.1: Engine, Hit, PatternProvider, AudioSink
 **Files:** Create `internal/engine/engine.go`, `internal/engine/sink.go`, `internal/engine/engine_test.go`
 **Write-scope:** `internal/engine/engine.go`, `internal/engine/sink.go`, `internal/engine/engine_test.go`
-**Consumes:** `go-mix/mix` API (Configure, SetSoundsPath, StartAt, SetFire, FireCount, OpenAudio, Teardown)
+**Consumes:** `gopkg.in/mix.v0` API (Configure, SetSoundsPath, StartAt, SetFire, FireCount, Start, Teardown) + `gopkg.in/mix.v0/spec` (AudioSpec, audio format constants)
 **Produces:** `Hit` struct (`Step int`, `Sample string`, `Pan float64`, `Velocity float64`); `PatternProvider` interface (`Next(bar int) (hits []Hit, bpm int, stepsPerBar int, err error)`); `AudioSink` interface (the atomix methods above); `atomixSink` adapter; `Engine` with `Run(ctx, PatternProvider) error` — used by 3.1, 4.1, 4.2, 6.1
 **Seams:** audio device boundary — `AudioSink` interface with a real `atomixSink` adapter and a `fakeSink` in the test; the engine is tested against `fakeSink`, never a real device
 **Tests:** `TestEngine_SchedulesOnContinuousClock` (bar N+1 start = bar N start + bar duration; fires recorded by `fakeSink` land at `barStart + step*stepDuration`); `TestEngine_HoldsAudioDeviceOpen` (`fakeSink` records exactly one `OpenAudio`, zero `Teardown` across multiple bars); `TestEngine_SigIntTeardown` (ctx cancel → one `Teardown`)
 **Model tier:** standard
 - [ ] RED: write `TestEngine_SchedulesOnContinuousClock` against a `fakeSink` (engine + provider not yet implemented) — fails to compile
 - [ ] Define `Hit`, `PatternProvider`, `AudioSink` in `engine.go`
-- [ ] Implement `atomixSink` in `sink.go` wrapping `go-mix/mix` (aliased `atomix`)
+- [ ] Implement `atomixSink` in `sink.go` wrapping `gopkg.in/mix.v0` (aliased `atomix`)
 - [ ] Implement `Engine.Run`: open audio once, loop bar-by-bar on a continuous absolute clock, call `provider.Next(bar)`, schedule `sink.SetFire` per hit at `barStart + step*stepDuration`, honor ctx cancel → `Teardown`
 - [ ] GREEN: test passes
 - [ ] RED+GREEN: `TestEngine_HoldsAudioDeviceOpen`, `TestEngine_SigIntTeardown`

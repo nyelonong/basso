@@ -10,7 +10,7 @@ Task-level and gate-level commands.
 
 > **Blocker:** no `go.mod` exists. The three commands above require a Go module
 > to run. Add `go mod init` (e.g. `go mod init github.com/nyelonong/basso`) and
-> `go get github.com/go-mix/mix` before these gates will pass.
+> `go get gopkg.in/mix.v0` before these gates will pass.
 >
 > **Skip note (audio):** end-to-end runs (`go run const.go m001.go`) require the
 > system libraries SDL2 and PortAudio and a working audio device. In any
