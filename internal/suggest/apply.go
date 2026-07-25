@@ -96,6 +96,18 @@ func (a *Applier) Apply(ctx context.Context, id string) (ApplyResult, error) {
 		return ApplyResult{}, fmt.Errorf("preflight candidate: %w", err)
 	}
 
+	sourceInfo, err = requireRegularFile(a.files, candidate.Metadata.SourcePath, "target source")
+	if err != nil {
+		return ApplyResult{}, err
+	}
+	original, err = a.files.ReadFile(candidate.Metadata.SourcePath)
+	if err != nil {
+		return ApplyResult{}, fmt.Errorf("read target source after preflight: %w", err)
+	}
+	if sha256Hex(original) != candidate.Metadata.BaseSHA256 {
+		return ApplyResult{}, errors.New("target source changed during candidate preflight")
+	}
+
 	backupsPath := filepath.Join(a.store.root, backupDirectory)
 	if err := makeApplyDirectory(a.files, a.store.root); err != nil {
 		return ApplyResult{}, err

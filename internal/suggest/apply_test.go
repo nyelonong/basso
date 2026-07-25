@@ -257,6 +257,35 @@ func TestApplier_RepreflightsBeforeWrite(t *testing.T) {
 	assertNoBackupDirectory(t, fixture.store.root)
 }
 
+func TestApplier_RefusesSourceChangedDuringPreflight(t *testing.T) {
+	t.Parallel()
+
+	fixture := newApplyFixture(t)
+	concurrentEdit := []byte("(bpm 87)\n")
+	files := &failingFileOps{}
+	applier := NewApplier(fixture.store, func(string) (Preflighter, error) {
+		return preflighterFunc(func(context.Context, string, int, int) error {
+			if err := os.WriteFile(fixture.sourcePath, concurrentEdit, 0o640); err != nil {
+				t.Fatalf("write concurrent source edit: %v", err)
+			}
+			return nil
+		}), nil
+	}, fixedApplyNow)
+	applier.files = files
+
+	if _, err := applier.Apply(context.Background(), fixture.candidate.Metadata.ID); err == nil {
+		t.Error("Apply() error = nil, want concurrent-edit refusal")
+	}
+	assertFileBytes(t, fixture.sourcePath, concurrentEdit)
+	assertNoBackupDirectory(t, fixture.store.root)
+	if len(files.tempPaths) != 0 {
+		t.Errorf("created temporary paths = %v, want none", files.tempPaths)
+	}
+	if files.renameCalls != 0 {
+		t.Errorf("rename call count = %d, want 0", files.renameCalls)
+	}
+}
+
 func TestApplier_CreatesExactPrivateBackup(t *testing.T) {
 	t.Parallel()
 
@@ -456,6 +485,12 @@ func (p *recordingPreflighter) Preflight(_ context.Context, source string, first
 		lastBar:  lastBar,
 	})
 	return p.err
+}
+
+type preflighterFunc func(context.Context, string, int, int) error
+
+func (f preflighterFunc) Preflight(ctx context.Context, source string, firstBar, lastBar int) error {
+	return f(ctx, source, firstBar, lastBar)
 }
 
 func fixedApplyNow() time.Time {
