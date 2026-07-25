@@ -115,8 +115,8 @@ func unwrapOllamaProposal(content string) (string, error) {
 		return "", errors.New("markdown proposal fence is incomplete")
 	}
 	opening := strings.TrimSuffix(lines[0], "\r")
-	if opening != "```" && opening != "```json" {
-		return "", errors.New("markdown proposal fence must be json or unlabelled")
+	if strings.Contains(strings.TrimPrefix(opening, "```"), "`") {
+		return "", errors.New("markdown proposal fence opening is malformed")
 	}
 	if strings.TrimSuffix(lines[len(lines)-1], "\r") != "```" {
 		return "", errors.New("markdown proposal fence is not the entire response")

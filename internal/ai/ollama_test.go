@@ -156,6 +156,24 @@ func TestOllamaClient_ParsesMarkdownFencedProposal(t *testing.T) {
 	}
 }
 
+func TestUnwrapOllamaProposal_IgnoresFenceLabel(t *testing.T) {
+	content, err := unwrapOllamaProposal(
+		"```JSON\n{\"summary\":\"Denser hats\",\"source\":\"pattern\"}\n```",
+	)
+	if err != nil {
+		t.Fatalf("unwrapOllamaProposal() error = %v", err)
+	}
+
+	got, err := decodeProposal(content)
+	if err != nil {
+		t.Fatalf("decodeProposal() error = %v", err)
+	}
+	want := suggest.Proposal{Summary: "Denser hats", Source: "pattern"}
+	if got != want {
+		t.Errorf("decodeProposal() = %#v, want %#v", got, want)
+	}
+}
+
 func TestUnwrapOllamaProposal_RejectsAmbiguousMarkdown(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -164,10 +182,6 @@ func TestUnwrapOllamaProposal_RejectsAmbiguousMarkdown(t *testing.T) {
 		{
 			name:    "incomplete fence",
 			content: "```json\n{}",
-		},
-		{
-			name:    "unsupported fence label",
-			content: "```fennel\n{}\n```",
 		},
 		{
 			name:    "prose after fence",
