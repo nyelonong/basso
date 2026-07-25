@@ -148,6 +148,33 @@ func TestHelpCommand_HasNoSideEffects(t *testing.T) {
 	}
 }
 
+func TestHelpCommand_RejectsArguments(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "help", args: []string{"help", "extra"}},
+		{name: "short alias", args: []string{"-h", "extra"}},
+		{name: "long alias", args: []string{"--help", "extra"}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			deps := testCommandDependencies(t.TempDir(), &stdout, io.Discard)
+
+			err := runCommand(context.Background(), test.args, deps)
+
+			if err == nil {
+				t.Fatal("runCommand() error = nil, want trailing-argument error")
+			}
+			if stdout.Len() != 0 {
+				t.Errorf("stdout = %q, want no successful help output", stdout.String())
+			}
+		})
+	}
+}
+
 func TestSuggestCommand_ValidatesConfigurationBeforeSourceRead(t *testing.T) {
 	dir := t.TempDir()
 	var stderr bytes.Buffer

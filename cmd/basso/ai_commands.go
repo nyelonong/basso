@@ -89,6 +89,9 @@ func runCommand(ctx context.Context, args []string, deps commandDependencies) er
 	if len(args) > 0 {
 		switch args[0] {
 		case "help", "-h", "--help":
+			if len(args) != 1 {
+				return errors.New("top-level help does not accept arguments")
+			}
 			return writeTopLevelHelp(deps.stdout)
 		case "suggest":
 			return runSuggestCommand(ctx, args[1:], deps)
