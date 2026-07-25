@@ -66,3 +66,79 @@ EV verified the Karplus-Strong decay test is a REAL correctness check, not just 
 EV controller ran gates independently: build/gofmt/vet green, `go test ./... -race` 57 tests pass; ran the real binary against the extended patterns/bass-groove.fnl (bass+brass+pluck all firing together): alive after 4s, ~2.4% CPU, clean SIGINT exit
 FIX (controller, in review): spec's "No synthesis" non-goal still said "no oscillator-shape choice" — now stale since :instrument literally is a voice/algorithm choice; corrected to name bass/brass/pluck and reworded the remaining out-of-scope list (no filters/EQ, no configurable envelope params, no piano/sample/FM voices)
 next: HANDOFF TO USER — same pattern as bass/pan-fix: neither controller nor subagent can hear audio or judge timbre. Play `basso play patterns/bass-groove.fnl` and confirm brass sounds brass-like (a swelling sawtooth pad) and pluck sounds like a plucked string (bright attack, decaying tail), not just "some other tone."
+EV [ai-suggest-baseline] before creating feat/ai-suggest from origin/master@b01f75a, confirmed the merged feature tip and origin/master have identical trees; `gofmt -l .`, `go vet ./...`, and `go test ./...` all pass (cmd/basso and internal/engine green)
+PLAN transactional-ai-suggestions written → docs/plans/2026-07-25-transactional-ai-suggestions.md (11 tasks across 5 DAG waves); spec status set to planned
+next: dispatch Wave 1 (1.1 shared bar validation, 1.2 model/prompt contract, 1.3 candidate artifacts) via /galdr:waves
+**WIP** dispatched docs/briefs/1.1-brief.md @5779bbae3abaddace430c9e7705184e25b13a660 scope=internal/engine/validation.go,internal/engine/validation_test.go tier=standard model=gpt-5.6-terra — next: review on return
+**WIP** dispatched docs/briefs/1.2-brief.md @5779bbae3abaddace430c9e7705184e25b13a660 scope=internal/suggest/model.go,internal/suggest/model_test.go,internal/suggest/prompt.go,internal/suggest/prompt_test.go,internal/suggest/prompt.txt tier=standard model=gpt-5.6-terra — next: review on return
+**WIP** dispatched docs/briefs/1.3-brief.md @5779bbae3abaddace430c9e7705184e25b13a660 scope=internal/suggest/candidate.go,internal/suggest/candidate_test.go tier=standard model=gpt-5.6-terra — next: review on return
+EV [waves] 1.1 return reviewed status=complete @a71ef2293ca9ab40a8306b499b705ba8a5026f28 — spec compliant; code quality accepted; focused validation 62 tests and engine package 111 tests green; integrated @ad418a0
+EV [waves] 1.2 return reviewed status=complete @fea7a80ede77a9cce6bb64a225ff74f47526d90d — spec compliant; code quality accepted; suggest package 9 tests green; integrated @34a9eef
+EV [waves] 1.3 return reviewed status=complete @2219b3fd0084a7fc9586a3536da123b48b4d9838 — spec compliant; code quality accepted; suggest package 12 tests green; integrated @f9fb151
+EV [wave-1-refactor] controller read all Wave 1 production and test files in full; tests assert boundaries and failure behavior without implementation coupling; no refactor required
+EV [wave-1-gate] `gofmt -l .` empty; `go vet ./...` green; `go test ./... -count=1` 140 tests pass in 3 packages; `git diff --check 5779bba..HEAD` green
+WAVE transactional-ai-suggestions/1 status=complete — Tasks 1.1, 1.2, and 1.3 reviewed, integrated, and fully gated
+USAGE [wave-1] model=gpt-5.6-terra agents=3 tokens=unavailable cumulative=unavailable — for your limit %, run /usage
+next: dispatch Wave 2 (2.1 bounded sandboxed evaluator, 2.2 OpenAI/Ollama adapters, 2.3 suggestion/repair service, 2.4 hash-guarded apply)
+**WIP** dispatched docs/briefs/2.1-brief.md @57c1705a459b3d590d5c2c0cddb6500c51cbbe42 scope=internal/engine/fennel.go,internal/engine/fennel_test.go,internal/engine/evaluator_test.go tier=top model=gpt-5.6-sol — next: review on return
+**WIP** dispatched docs/briefs/2.2-brief.md @57c1705a459b3d590d5c2c0cddb6500c51cbbe42 scope=internal/ai/config.go,internal/ai/config_test.go,internal/ai/openai.go,internal/ai/openai_test.go,internal/ai/ollama.go,internal/ai/ollama_test.go tier=top model=gpt-5.6-sol — next: review on return
+**WIP** queued docs/briefs/2.3-brief.md @57c1705a459b3d590d5c2c0cddb6500c51cbbe42 scope=internal/suggest/service.go,internal/suggest/service_test.go tier=standard model=gpt-5.6-terra — next: dispatch when a runtime slot opens
+**WIP** dispatched docs/briefs/2.4-brief.md @57c1705a459b3d590d5c2c0cddb6500c51cbbe42 scope=internal/suggest/apply.go,internal/suggest/apply_test.go tier=top model=gpt-5.6-sol — next: review on return
+**WIP** dispatched docs/briefs/2.3-brief.md @57c1705a459b3d590d5c2c0cddb6500c51cbbe42 scope=internal/suggest/service.go,internal/suggest/service_test.go tier=standard model=gpt-5.6-terra — next: review on return
+EV [waves] 2.1 return reviewed status=complete @63b7e8074b1982a703b58f30ffd22a2d92f43153 — spec compliant after review correction for required/typed numeric hit fields; engine and race suites green; integrated @733c827/@dc74312
+EV [waves] 2.2 return reviewed status=complete @2629a4f592e96edc587d53982af9ed40c2c97030 — official Responses `text.format` contract, strict config, completed-status, refusal, redirect, bounds, and timeout behavior accepted; local httptest only; integrated through @56734dd
+EV [waves] 2.3 return reviewed status=complete @528876fc81faf9b6d1b128c9b999a0e6c5b36ff1 — one-repair control flow and complete two-attempt diagnostics accepted; 46 suggest tests green in task worktree; integrated @3b300d0/@0ec79ec
+EV [waves] 2.4 return reviewed status=complete @77a7bf497392a94f37943256980ca4459fbc068b — strict load/hash/type/preflight/backup/atomic-replace behavior accepted after concurrent-edit correction; 54 suggest tests green in task worktree; integrated @050492a/@febcc87
+EV [wave-2-integration-red] `go vet ./...` exposed duplicate private `preflightCall` test helpers from disjoint Task 2.3/2.4 branches; production code unaffected
+EV [wave-2-integration-green] renamed the service-only test helper @f1e1fea; full integrated package now compiles
+EV [wave-2-refactor] controller read all Wave 2 production and test files, checked external-boundary fakes, failure injection, cancellation, hashes, and strict decoding; no further refactor required
+EV [wave-2-gate] `gofmt -l .` empty; `go vet ./...` green; `go test ./... -count=1` 283 tests pass in 4 packages; `go test -race ./... -count=1` 283 tests pass; `git diff --check 57c1705..HEAD` green
+WAVE transactional-ai-suggestions/2 status=complete — Tasks 2.1 through 2.4 reviewed, corrected, integrated, and fully gated
+USAGE [wave-2] models=gpt-5.6-sol,gpt-5.6-terra agents=4 tokens=unavailable cumulative=unavailable — for your limit %, run /usage
+next: dispatch Wave 3 Task 3.1 (transactional runtime and directory-based reload)
+**WIP** dispatched docs/briefs/3.1-brief.md @10d94045cbe6e9d27e22890679ed48f16c75123f scope=internal/engine/fennel.go,internal/engine/fennel_test.go,internal/engine/fennel_reload_test.go,internal/engine/diagnostic.go,internal/engine/diagnostic_test.go,cmd/basso/main.go,cmd/basso/main_test.go tier=top model=gpt-5.6-sol — next: review on return
+EV [waves] 3.1 return reviewed status=complete @702e8240961ed0e3493c54262818e3bfbfa8b4dd — transactional active/pending/last-good state, directory watcher, diagnostic mapping/deduplication, pre-sink validation, and one-sink reject/recover lifecycle accepted; integrated @7f1855e/@983d50f
+EV [wave-3-refactor] removed the obsolete permissive sample-inventory bypass; every evaluator-backed runtime path now validates against its supplied inventory
+EV [wave-3-gate] `gofmt -l .` empty; `go vet ./...` green; `go test ./... -count=1` 299 tests pass in 4 packages; `go test -race ./... -count=1` 299 tests pass; `git diff --check 10d9404..HEAD` green
+WAVE transactional-ai-suggestions/3 status=complete — Task 3.1 reviewed, refactored, integrated, and fully gated
+USAGE [wave-3] model=gpt-5.6-sol agents=1 tokens=unavailable cumulative=unavailable — for your limit %, run /usage
+next: dispatch Wave 4 Task 4.1 (wire `suggest` and `apply` CLI composition)
+**WIP** dispatched docs/briefs/4.1-brief.md @f324880996f5e3e14a5a12833abca2e808ae54fe scope=cmd/basso/main.go,cmd/basso/main_test.go,cmd/basso/ai_commands.go,cmd/basso/ai_commands_test.go,go.mod,go.sum tier=top model=gpt-5.6-sol — next: review on return
+EV [waves] 4.1 return reviewed status=complete @4804349bb8d7c47c7b472d3dbd18e78e4dbb2351 — dispatch, configuration ordering, provider selection, bounded source/prompt, candidate-only save/diff, hash-guarded apply, and no-audio seams accepted; integrated @63a59b1
+EV [wave-4-gate] `gofmt -l .` empty; `go vet ./...` green; `go test -race ./... -count=1` 315 tests pass in 4 packages; `CGO_ENABLED=0 go build ./...` green; `git diff --check f324880..HEAD` green
+WAVE transactional-ai-suggestions/4 status=complete — Task 4.1 reviewed, integrated, and fully gated
+USAGE [wave-4] model=gpt-5.6-sol agents=1 tokens=unavailable cumulative=unavailable — for your limit %, run /usage
+next: dispatch Wave 5 Tasks 5.1 (end-to-end workflow proof) and 5.2 (README and `.basso/` contract)
+DECISION [5.1-clock-seam] `engine.Engine`'s clock seam is package-private and Task 5.1 may only create `cmd/basso/ai_workflow_test.go`; preserve scope and avoid unsafe test hooks by using 400 BPM/1-step bars, channel observations, and bounded deadlines with the real engine clock
+**WIP** dispatched docs/briefs/5.1-brief.md @5e828227c1e83b16f0053d86b5a58ed5db6f6dac scope=cmd/basso/ai_workflow_test.go tier=top model=gpt-5.6-sol — next: review on return
+**WIP** dispatched docs/briefs/5.2-brief.md @5e828227c1e83b16f0053d86b5a58ed5db6f6dac scope=.gitignore,README.md tier=standard model=gpt-5.6-terra — next: review on return
+EV [waves] 5.1 return reviewed status=complete @76495a55be7109822fb0becf365957bdc5a10413 — real evaluator/store/hash/atomic-rename/fsnotify workflow accepted; invalid repair/live fallback and stale-base preservation proven; focused race count=10 green; integrated @fa138d7
+EV [waves] 5.2 return reviewed status=complete through @fb98bd973d8cf131895762ebc0612f13a13130ee — explicit consent boundary, provider configuration, candidate review, apply/recovery, stale refusal, and gitignored local state accepted after shell-safe example corrections; integrated @fdc61de/@7b2a771/@87260f1
+EV [wave-5-gate-load] a parallelized race/vet/build attempt starved 250 ms evaluator deadlines and produced five timeouts, including three pre-existing engine tests; the required standalone race gate was rerun without competing build load
+EV [wave-5-gate] task scopes disjoint; `gofmt -l .` empty; `go vet ./...` green; standalone `go test -race ./... -count=3` 954 tests pass in 4 packages; `CGO_ENABLED=0 go build ./...` green; `.basso/` ignored exactly once with no `.fnl` ignore; README contract greps and `git diff --check` green
+WAVE transactional-ai-suggestions/5 status=complete — Tasks 5.1 and 5.2 reviewed, corrected, integrated, and fully gated
+USAGE [wave-5] models=gpt-5.6-sol,gpt-5.6-terra agents=2 tokens=unavailable cumulative=unavailable — for your limit %, run /usage
+CLOSEOUT [transactional-ai-suggestions] all 11 tasks across five waves complete; spec lifecycle set to complete; branch preserves offline playback while adding explicit, validated, review-before-apply OpenAI/Ollama suggestions with stale-safe backups and last-known-good live recovery
+HYP 1: Ollama Cloud returned one JSON proposal wrapped in a Markdown `json` code fence despite the requested schema, and the Ollama adapter passed that fence directly to the strict JSON decoder → `go test ./internal/ai -run '^TestOllamaClient_ParsesMarkdownFencedProposal$' -count=1` → confirmed, fails with `ollama: invalid proposal: invalid character '`' looking for beginning of value`
+EV [ollama-fenced-proposal RED] `go test ./internal/ai -run '^TestOllamaClient_ParsesMarkdownFencedProposal$' -count=1` → FAIL reproducing the user's exact decoder error
+EV [ollama-fenced-proposal GREEN] `go test ./internal/ai -run '^TestOllamaClient_ParsesMarkdownFencedProposal$' -count=1` → PASS after bounded whole-response fence normalization; strict inner proposal decoding remains unchanged
+EV [ollama-fenced-proposal gate] `gofmt -l .` empty; `go vet ./...` green; `go test ./internal/ai -count=1` 65 tests pass; `go test -race ./... -count=1` 324 tests pass; `CGO_ENABLED=0 go build ./...` green; user-owned `.gitignore` edit preserved and excluded
+HYP 2: the first fix incorrectly treated the model-controlled Markdown fence label as a validation boundary; Ollama Cloud used a different label, while the strict inner proposal decoder is the actual safety boundary → `go test ./internal/ai -run '^TestUnwrapOllamaProposal_IgnoresFenceLabel$' -count=1` → confirmed, valid inner JSON is rejected before strict decoding solely because the label is `JSON`
+EV [ollama-fence-label RED] `go test ./internal/ai -run '^TestUnwrapOllamaProposal_IgnoresFenceLabel$' -count=1` → FAIL with the reported fence-label rejection
+EV [ollama-fence-label GREEN] `go test ./internal/ai -run '^TestUnwrapOllamaProposal_IgnoresFenceLabel$' -count=1` → PASS after discarding the non-semantic label and retaining whole-fence plus strict inner JSON/schema checks
+EV [ollama-fence-label gate] `gofmt -l .` empty; `go vet ./...` green; `go test ./internal/ai -count=1` 65 tests pass; `go test -race ./... -count=1` 324 tests pass; `CGO_ENABLED=0 go build ./...` green
+HYP 3: after accepting the model-controlled fence label, one real cloud response still was not valid proposal JSON (`invalid character ':'`), suggesting a second inner payload shape → bounded `DBG-ollama-content` rerun against `glm-5.2:cloud` → not reproduced; rerun returned complete fenced JSON, passed local validation, and saved candidate `20260725T050121.235355000Z-f04b0fc25d9e`, confirming provider output varies between requests
+EV [ollama-cloud-live] instrumented `go run ./cmd/basso suggest --provider ollama --model glm-5.2:cloud patterns/basic-groove.fnl "Make the hats denser"` → PASS; strict fenced JSON decoded, 16-bar validation passed, source unchanged, review candidate and unified diff created
+SPEC cli-help-command written → docs/specs/2026-07-25-help-command.md; lifecycle shaped — next: user approval, then TDD implementation
+PLAN cli-help-command written → docs/plans/2026-07-25-help-command.md; lifecycle planned — next: strict RED→GREEN implementation
+**WIP** dispatched docs/briefs/1.1-help-brief.md @5ca31e24b19be3d000b2a0a1ee9bf997ed13997d scope=cmd/basso/ai_commands.go,cmd/basso/ai_commands_test.go tier=standard model=gpt-5.6-sol — next: review on return
+EV [waves] 1.1 return reviewed status=complete @62dc833c40ccbf2bf08df259459b710208af3793
+EV [cli-help-command/1 gate] `gofmt -l .` → PASS no output @b8ffcc5
+EV [cli-help-command/1 gate] `go vet ./...` → PASS 4 packages @b8ffcc5
+EV [cli-help-command/1 gate] `go test -race ./... -count=1` → PASS 331 passed 0 skipped in 4 packages @b8ffcc5
+EV [cli-help-command/1 gate] `CGO_ENABLED=0 go build ./...` → PASS @b8ffcc5
+EV [cli-help-command/1 gate] focused help tests and real alias comparison → PASS 7 tests, byte-identical output, no `.basso/` state @b8ffcc5
+EV [cli-help-command/1 refactor] exact output snapshot and distinct alias, side-effect, and rejection tests retained; no behavior-preserving simplification found @b8ffcc5
+WAVE cli-help-command/1 status=complete — Task 1.1 reviewed, integrated, and fully gated
+USAGE [cli-help-command/1] model=gpt-5.6-sol agents=1 tokens=unavailable cumulative=unavailable — for your limit %, run /usage
+CLOSEOUT [cli-help-command] `basso help`, `basso -h`, and `basso --help` now provide complete zero-side-effect command discovery

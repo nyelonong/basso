@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/nyelonong/basso/internal/engine"
 )
@@ -31,7 +32,35 @@ type providerConstructor func(path string) (closablePatternProvider, error)
 // newFennelProvider adapts engine.FennelProvider.NewFromFile to
 // providerConstructor's signature.
 func newFennelProvider(path string) (closablePatternProvider, error) {
-	return engine.NewFromFile(path)
+	inventory, err := engine.LoadSoundInventory("sound/808")
+	if err != nil {
+		return nil, err
+	}
+	evaluator := engine.NewEvaluator(inventory, 250*time.Millisecond)
+	return engine.NewFromFile(path, evaluator, stderrDiagnosticReporter(os.Stderr))
+}
+
+func stderrDiagnosticReporter(stderr io.Writer) engine.DiagnosticReporter {
+	return func(diagnostic engine.Diagnostic) {
+		if diagnostic.Bar == nil {
+			fmt.Fprintf(
+				stderr,
+				"revision %s %s: %v\n",
+				diagnostic.RevisionSHA256,
+				diagnostic.Phase,
+				diagnostic.Err,
+			)
+			return
+		}
+		fmt.Fprintf(
+			stderr,
+			"revision %s bar %d %s: %v\n",
+			diagnostic.RevisionSHA256,
+			*diagnostic.Bar,
+			diagnostic.Phase,
+			diagnostic.Err,
+		)
+	}
 }
 
 // newBeepSink adapts engine.NewBeepSink to a zero-arg constructor, so run()
@@ -112,7 +141,11 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := run(ctx, os.Args[1:], os.Stdout, newFennelProvider, newBeepSink); err != nil {
+	deps, err := defaultCommandDependencies(os.Stdout, os.Stderr)
+	if err == nil {
+		err = runCommand(ctx, os.Args[1:], deps)
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "basso:", err)
 		os.Exit(1)
 	}

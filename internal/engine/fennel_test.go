@@ -2,6 +2,12 @@ package engine
 
 import "testing"
 
+func TestNew_RejectsNilEvaluator(t *testing.T) {
+	if _, err := New(fennelSourceSample("kick2.wav"), nil, nil); err == nil {
+		t.Fatal("New() error = nil, want nil evaluator error")
+	}
+}
+
 // TestFennelProvider_ReproducesM001 verifies that a .fnl source reproducing
 // the m001 pattern compiles via New and that Next(0) returns hits matching
 // StaticProvider's Next(0) on Step, Sample, and Velocity (Pan is randomized
@@ -29,7 +35,7 @@ func TestFennelProvider_ReproducesM001(t *testing.T) {
 pattern
 `
 
-	provider, err := New(source)
+	provider, err := New(source, NewEvaluator(fennelProviderTestInventory(), legacyEvaluationTimeout), nil)
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -78,7 +84,7 @@ func TestFennelProvider_HitDefaults(t *testing.T) {
 pattern
 `
 
-	provider, err := New(source)
+	provider, err := New(source, NewEvaluator(fennelProviderTestInventory(), legacyEvaluationTimeout), nil)
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -113,7 +119,7 @@ func TestFennelProvider_MapsNoteHit(t *testing.T) {
 pattern
 `
 
-	provider, err := New(source)
+	provider, err := New(source, NewEvaluator(fennelProviderTestInventory(), legacyEvaluationTimeout), nil)
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -151,7 +157,7 @@ func TestFennelProvider_NoteHitDefaultsLength(t *testing.T) {
 pattern
 `
 
-	provider, err := New(source)
+	provider, err := New(source, NewEvaluator(fennelProviderTestInventory(), legacyEvaluationTimeout), nil)
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -182,7 +188,7 @@ func TestFennelProvider_NoteHitDefaultsPanToCenter(t *testing.T) {
 pattern
 `
 
-	provider, err := New(source)
+	provider, err := New(source, NewEvaluator(fennelProviderTestInventory(), legacyEvaluationTimeout), nil)
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -211,7 +217,7 @@ func TestFennelProvider_MapsInstrument(t *testing.T) {
 pattern
 `
 
-	provider, err := New(source)
+	provider, err := New(source, NewEvaluator(fennelProviderTestInventory(), legacyEvaluationTimeout), nil)
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -239,7 +245,7 @@ func TestFennelProvider_NoteHitDefaultsInstrumentToBass(t *testing.T) {
 pattern
 `
 
-	provider, err := New(source)
+	provider, err := New(source, NewEvaluator(fennelProviderTestInventory(), legacyEvaluationTimeout), nil)
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -272,13 +278,8 @@ func TestFennelProvider_HitRequiresExactlyOneOfSampleOrNote(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			source := "(fn pattern [bar]\n  [" + tt.hit + "])\n\npattern\n"
 
-			provider, err := New(source)
-			if err != nil {
-				t.Fatalf("New() error = %v, want nil", err)
-			}
-
-			if _, _, _, err := provider.Next(0); err == nil {
-				t.Fatalf("Next(0) error = nil, want error")
+			if _, err := New(source, NewEvaluator(fennelProviderTestInventory(), legacyEvaluationTimeout), nil); err == nil {
+				t.Fatalf("New() error = nil, want error")
 			}
 		})
 	}
@@ -297,7 +298,7 @@ func TestFennelProvider_TempoFunctions(t *testing.T) {
 pattern
 `
 
-	provider, err := New(source)
+	provider, err := New(source, NewEvaluator(fennelProviderTestInventory(), legacyEvaluationTimeout), nil)
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -313,4 +314,16 @@ pattern
 	if stepsPerBar != 12 {
 		t.Errorf("stepsPerBar = %d, want 12", stepsPerBar)
 	}
+}
+
+func fennelProviderTestInventory() SoundInventory {
+	inventory := testInventory()
+	for _, name := range []string{
+		"hightom.wav",
+		"kick1.wav",
+		"maracas.wav",
+	} {
+		inventory[name] = struct{}{}
+	}
+	return inventory
 }
