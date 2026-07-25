@@ -72,3 +72,11 @@ next: dispatch Wave 1 (1.1 shared bar validation, 1.2 model/prompt contract, 1.3
 **WIP** dispatched docs/briefs/1.1-brief.md @5779bbae3abaddace430c9e7705184e25b13a660 scope=internal/engine/validation.go,internal/engine/validation_test.go tier=standard model=gpt-5.6-terra — next: review on return
 **WIP** dispatched docs/briefs/1.2-brief.md @5779bbae3abaddace430c9e7705184e25b13a660 scope=internal/suggest/model.go,internal/suggest/model_test.go,internal/suggest/prompt.go,internal/suggest/prompt_test.go,internal/suggest/prompt.txt tier=standard model=gpt-5.6-terra — next: review on return
 **WIP** dispatched docs/briefs/1.3-brief.md @5779bbae3abaddace430c9e7705184e25b13a660 scope=internal/suggest/candidate.go,internal/suggest/candidate_test.go tier=standard model=gpt-5.6-terra — next: review on return
+EV [waves] 1.1 return reviewed status=complete @a71ef2293ca9ab40a8306b499b705ba8a5026f28 — spec compliant; code quality accepted; focused validation 62 tests and engine package 111 tests green; integrated @ad418a0
+EV [waves] 1.2 return reviewed status=complete @fea7a80ede77a9cce6bb64a225ff74f47526d90d — spec compliant; code quality accepted; suggest package 9 tests green; integrated @34a9eef
+EV [waves] 1.3 return reviewed status=complete @2219b3fd0084a7fc9586a3536da123b48b4d9838 — spec compliant; code quality accepted; suggest package 12 tests green; integrated @f9fb151
+EV [wave-1-refactor] controller read all Wave 1 production and test files in full; tests assert boundaries and failure behavior without implementation coupling; no refactor required
+EV [wave-1-gate] `gofmt -l .` empty; `go vet ./...` green; `go test ./... -count=1` 140 tests pass in 3 packages; `git diff --check 5779bba..HEAD` green
+WAVE transactional-ai-suggestions/1 status=complete — Tasks 1.1, 1.2, and 1.3 reviewed, integrated, and fully gated
+USAGE [wave-1] model=gpt-5.6-terra agents=3 tokens=unavailable cumulative=unavailable — for your limit %, run /usage
+next: dispatch Wave 2 (2.1 bounded sandboxed evaluator, 2.2 OpenAI/Ollama adapters, 2.3 suggestion/repair service, 2.4 hash-guarded apply)
