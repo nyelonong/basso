@@ -61,9 +61,8 @@ func (e *EvaluationError) Unwrap() error {
 // Evaluator compiles, runs, maps, and validates untrusted Fennel source in a
 // fresh, sandboxed Lua state for every bar.
 type Evaluator struct {
-	inventory       SoundInventory
-	timeout         time.Duration
-	allowAnySamples bool
+	inventory SoundInventory
+	timeout   time.Duration
 }
 
 // NewEvaluator constructs an evaluator with an immutable copy of inventory.
@@ -564,11 +563,7 @@ func (e *Evaluator) Evaluate(ctx context.Context, source string, bar int) (Bar, 
 		BPM:         bpm,
 		StepsPerBar: stepsPerBar,
 	}
-	inventory := e.inventory
-	if e.allowAnySamples {
-		inventory = inventoryIncludingBarSamples(inventory, mappedBar)
-	}
-	if err := ValidateBar(mappedBar, inventory); err != nil {
+	if err := ValidateBar(mappedBar, e.inventory); err != nil {
 		return Bar{}, newEvaluationError(EvaluationPhaseValidate, bar, err)
 	}
 
@@ -655,17 +650,4 @@ func mappedHitNumber(row *lua.LTable, field string, hit int) (float64, bool, err
 		return 0, false, fmt.Errorf("hit %d :%s must be a number", hit, field)
 	}
 	return float64(number), true, nil
-}
-
-func inventoryIncludingBarSamples(inventory SoundInventory, bar Bar) SoundInventory {
-	result := make(SoundInventory, len(inventory)+len(bar.Hits))
-	for name := range inventory {
-		result[name] = struct{}{}
-	}
-	for _, hit := range bar.Hits {
-		if hit.Sample != "" {
-			result[hit.Sample] = struct{}{}
-		}
-	}
-	return result
 }
