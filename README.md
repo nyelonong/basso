@@ -42,12 +42,12 @@ model is selected by default:
 ```sh
 # OpenAI
 export BASSO_AI_PROVIDER=openai
-export BASSO_AI_MODEL=<model-name>
-export OPENAI_API_KEY=<api-key>
+export BASSO_AI_MODEL="your-model-name"
+export OPENAI_API_KEY="your-api-key"
 
 # Or Ollama (its URL is optional and defaults to http://127.0.0.1:11434)
 export BASSO_AI_PROVIDER=ollama
-export BASSO_AI_MODEL=<model-name>
+export BASSO_AI_MODEL="your-model-name"
 export BASSO_OLLAMA_URL=http://127.0.0.1:11434
 ```
 
@@ -59,7 +59,7 @@ variables, credentials, git history, or candidate history.
 Flags override environment configuration: `--provider`, `--model`,
 `--timeout`, and `--sounds`.
 
-```sh
+```text
 basso suggest [flags] <source.fnl> "<prompt>"
 ```
 
@@ -81,11 +81,11 @@ basso apply <candidate-id>
 ```
 
 Apply preserves the original source under `.basso/backups/` and reports the
-exact backup path. To recover manually, copy that reported backup over the
-source, for example:
+exact backup path. To recover manually, set `BACKUP_PATH` to that exact printed
+path, then copy it over the source:
 
 ```sh
-cp .basso/backups/<timestamp>-<base-hash>-basic-groove.fnl patterns/basic-groove.fnl
+cp "$BACKUP_PATH" patterns/basic-groove.fnl
 ```
 
 If you edit the source manually after requesting a candidate, its base is
