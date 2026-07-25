@@ -117,3 +117,73 @@ func TestOllamaClient_ParsesProposal(t *testing.T) {
 		t.Errorf("Propose() = %#v, want %#v", got, want)
 	}
 }
+
+func TestOllamaClient_ParsesMarkdownFencedProposal(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		writeResponseForTest(t, response, `{
+			"done":true,
+			"message":{
+				"role":"assistant",
+				"content":"`+"```json\\n{\\\"summary\\\":\\\"Denser hats\\\",\\\"source\\\":\\\"(fn pattern [bar] [])\\\\npattern\\\"}\\n```"+`"
+			}
+		}`)
+	}))
+	defer server.Close()
+
+	origin, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("parse server URL: %v", err)
+	}
+	client := NewOllamaClient(
+		Config{
+			Model:     "test-model",
+			Timeout:   time.Second,
+			OllamaURL: origin,
+		},
+		server.Client(),
+	)
+
+	got, err := client.Propose(context.Background(), testModelRequest())
+	if err != nil {
+		t.Fatalf("Propose() error = %v", err)
+	}
+	want := suggest.Proposal{
+		Summary: "Denser hats",
+		Source:  "(fn pattern [bar] [])\npattern",
+	}
+	if got != want {
+		t.Errorf("Propose() = %#v, want %#v", got, want)
+	}
+}
+
+func TestUnwrapOllamaProposal_RejectsAmbiguousMarkdown(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{
+			name:    "incomplete fence",
+			content: "```json\n{}",
+		},
+		{
+			name:    "unsupported fence label",
+			content: "```fennel\n{}\n```",
+		},
+		{
+			name:    "prose after fence",
+			content: "```json\n{}\n```\nThis is the proposal.",
+		},
+		{
+			name:    "empty fence",
+			content: "```json\n\n```",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := unwrapOllamaProposal(test.content); err == nil {
+				t.Fatal("unwrapOllamaProposal() error = nil, want rejection")
+			}
+		})
+	}
+}

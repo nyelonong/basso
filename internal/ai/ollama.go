@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/nyelonong/basso/internal/suggest"
 )
@@ -92,9 +93,38 @@ func (client *OllamaClient) Propose(
 	if envelope.Message.Role != "assistant" {
 		return suggest.Proposal{}, errors.New("ollama: response has no assistant message")
 	}
-	proposal, err := decodeProposal(envelope.Message.Content)
+	proposalContent, err := unwrapOllamaProposal(envelope.Message.Content)
 	if err != nil {
 		return suggest.Proposal{}, fmt.Errorf("ollama: invalid proposal: %w", err)
+	}
+	proposal, err := decodeProposal(proposalContent)
+	if err != nil {
+		return suggest.Proposal{}, fmt.Errorf("ollama: invalid proposal: %w", err)
+	}
+	return proposal, nil
+}
+
+func unwrapOllamaProposal(content string) (string, error) {
+	trimmed := strings.TrimSpace(content)
+	if !strings.HasPrefix(trimmed, "```") {
+		return content, nil
+	}
+
+	lines := strings.Split(trimmed, "\n")
+	if len(lines) < 3 {
+		return "", errors.New("markdown proposal fence is incomplete")
+	}
+	opening := strings.TrimSuffix(lines[0], "\r")
+	if opening != "```" && opening != "```json" {
+		return "", errors.New("markdown proposal fence must be json or unlabelled")
+	}
+	if strings.TrimSuffix(lines[len(lines)-1], "\r") != "```" {
+		return "", errors.New("markdown proposal fence is not the entire response")
+	}
+
+	proposal := strings.Join(lines[1:len(lines)-1], "\n")
+	if strings.TrimSpace(proposal) == "" {
+		return "", errors.New("markdown proposal fence is empty")
 	}
 	return proposal, nil
 }
