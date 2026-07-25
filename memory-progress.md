@@ -103,3 +103,4 @@ EV [wave-3-gate] `gofmt -l .` empty; `go vet ./...` green; `go test ./... -count
 WAVE transactional-ai-suggestions/3 status=complete — Task 3.1 reviewed, refactored, integrated, and fully gated
 USAGE [wave-3] model=gpt-5.6-sol agents=1 tokens=unavailable cumulative=unavailable — for your limit %, run /usage
 next: dispatch Wave 4 Task 4.1 (wire `suggest` and `apply` CLI composition)
+**WIP** dispatched docs/briefs/4.1-brief.md @f324880996f5e3e14a5a12833abca2e808ae54fe scope=cmd/basso/main.go,cmd/basso/main_test.go,cmd/basso/ai_commands.go,cmd/basso/ai_commands_test.go,go.mod,go.sum tier=top model=gpt-5.6-sol — next: review on return
