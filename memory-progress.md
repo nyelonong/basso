@@ -69,3 +69,6 @@ next: HANDOFF TO USER — same pattern as bass/pan-fix: neither controller nor s
 EV [ai-suggest-baseline] before creating feat/ai-suggest from origin/master@b01f75a, confirmed the merged feature tip and origin/master have identical trees; `gofmt -l .`, `go vet ./...`, and `go test ./...` all pass (cmd/basso and internal/engine green)
 PLAN transactional-ai-suggestions written → docs/plans/2026-07-25-transactional-ai-suggestions.md (11 tasks across 5 DAG waves); spec status set to planned
 next: dispatch Wave 1 (1.1 shared bar validation, 1.2 model/prompt contract, 1.3 candidate artifacts) via /galdr:waves
+**WIP** dispatched docs/briefs/1.1-brief.md @5779bbae3abaddace430c9e7705184e25b13a660 scope=internal/engine/validation.go,internal/engine/validation_test.go tier=standard model=gpt-5.6-terra — next: review on return
+**WIP** dispatched docs/briefs/1.2-brief.md @5779bbae3abaddace430c9e7705184e25b13a660 scope=internal/suggest/model.go,internal/suggest/model_test.go,internal/suggest/prompt.go,internal/suggest/prompt_test.go,internal/suggest/prompt.txt tier=standard model=gpt-5.6-terra — next: review on return
+**WIP** dispatched docs/briefs/1.3-brief.md @5779bbae3abaddace430c9e7705184e25b13a660 scope=internal/suggest/candidate.go,internal/suggest/candidate_test.go tier=standard model=gpt-5.6-terra — next: review on return

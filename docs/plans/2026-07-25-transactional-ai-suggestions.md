@@ -97,9 +97,9 @@ independent test strategies.
 
 | Task | Wave | Status | Evidence |
 |---|---|---|---|
-| 1.1 | 1 | pending | — |
-| 1.2 | 1 | pending | — |
-| 1.3 | 1 | pending | — |
+| 1.1 | 1 | in-progress | dispatched from `5779bba` |
+| 1.2 | 1 | in-progress | dispatched from `5779bba` |
+| 1.3 | 1 | in-progress | dispatched from `5779bba` |
 | 2.1 | 2 | pending | — |
 | 2.2 | 2 | pending | — |
 | 2.3 | 2 | pending | — |

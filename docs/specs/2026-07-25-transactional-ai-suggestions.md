@@ -1,6 +1,6 @@
 # Spec: transactional AI pattern suggestions
 
-Lifecycle status: planned
+Lifecycle status: in-progress
 
 **Roles touched:** none
 
