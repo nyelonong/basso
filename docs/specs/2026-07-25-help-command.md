@@ -1,6 +1,6 @@
 # Spec: CLI help command
 
-Lifecycle status: planned
+Lifecycle status: shipped
 
 **Roles touched:** none
 

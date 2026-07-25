@@ -131,3 +131,14 @@ HYP 3: after accepting the model-controlled fence label, one real cloud response
 EV [ollama-cloud-live] instrumented `go run ./cmd/basso suggest --provider ollama --model glm-5.2:cloud patterns/basic-groove.fnl "Make the hats denser"` → PASS; strict fenced JSON decoded, 16-bar validation passed, source unchanged, review candidate and unified diff created
 SPEC cli-help-command written → docs/specs/2026-07-25-help-command.md; lifecycle shaped — next: user approval, then TDD implementation
 PLAN cli-help-command written → docs/plans/2026-07-25-help-command.md; lifecycle planned — next: strict RED→GREEN implementation
+**WIP** dispatched docs/briefs/1.1-help-brief.md @5ca31e24b19be3d000b2a0a1ee9bf997ed13997d scope=cmd/basso/ai_commands.go,cmd/basso/ai_commands_test.go tier=standard model=gpt-5.6-sol — next: review on return
+EV [waves] 1.1 return reviewed status=complete @62dc833c40ccbf2bf08df259459b710208af3793
+EV [cli-help-command/1 gate] `gofmt -l .` → PASS no output @b8ffcc5
+EV [cli-help-command/1 gate] `go vet ./...` → PASS 4 packages @b8ffcc5
+EV [cli-help-command/1 gate] `go test -race ./... -count=1` → PASS 331 passed 0 skipped in 4 packages @b8ffcc5
+EV [cli-help-command/1 gate] `CGO_ENABLED=0 go build ./...` → PASS @b8ffcc5
+EV [cli-help-command/1 gate] focused help tests and real alias comparison → PASS 7 tests, byte-identical output, no `.basso/` state @b8ffcc5
+EV [cli-help-command/1 refactor] exact output snapshot and distinct alias, side-effect, and rejection tests retained; no behavior-preserving simplification found @b8ffcc5
+WAVE cli-help-command/1 status=complete — Task 1.1 reviewed, integrated, and fully gated
+USAGE [cli-help-command/1] model=gpt-5.6-sol agents=1 tokens=unavailable cumulative=unavailable — for your limit %, run /usage
+CLOSEOUT [cli-help-command] `basso help`, `basso -h`, and `basso --help` now provide complete zero-side-effect command discovery

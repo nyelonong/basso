@@ -50,7 +50,7 @@ construction, audio setup, or runtime state.
 
 | Task | Wave | Status | Evidence |
 |---|---|---|---|
-| 1.1 | 1 | pending | — |
+| 1.1 | 1 | complete | reviewed `62dc833`; integrated `c7f5730`/`b8ffcc5` |
 
 ```mermaid
 flowchart TD
