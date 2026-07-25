@@ -334,19 +334,19 @@ func testSHA256(source []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-type preflightCall struct {
+type servicePreflightCall struct {
 	source   string
 	firstBar int
 	lastBar  int
 }
 
 type scriptedPreflighter struct {
-	calls []preflightCall
+	calls []servicePreflightCall
 	errs  []error
 }
 
 func (p *scriptedPreflighter) Preflight(_ context.Context, source string, firstBar, lastBar int) error {
-	p.calls = append(p.calls, preflightCall{
+	p.calls = append(p.calls, servicePreflightCall{
 		source:   source,
 		firstBar: firstBar,
 		lastBar:  lastBar,
