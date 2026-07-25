@@ -97,3 +97,9 @@ WAVE transactional-ai-suggestions/2 status=complete — Tasks 2.1 through 2.4 re
 USAGE [wave-2] models=gpt-5.6-sol,gpt-5.6-terra agents=4 tokens=unavailable cumulative=unavailable — for your limit %, run /usage
 next: dispatch Wave 3 Task 3.1 (transactional runtime and directory-based reload)
 **WIP** dispatched docs/briefs/3.1-brief.md @10d94045cbe6e9d27e22890679ed48f16c75123f scope=internal/engine/fennel.go,internal/engine/fennel_test.go,internal/engine/fennel_reload_test.go,internal/engine/diagnostic.go,internal/engine/diagnostic_test.go,cmd/basso/main.go,cmd/basso/main_test.go tier=top model=gpt-5.6-sol — next: review on return
+EV [waves] 3.1 return reviewed status=complete @702e8240961ed0e3493c54262818e3bfbfa8b4dd — transactional active/pending/last-good state, directory watcher, diagnostic mapping/deduplication, pre-sink validation, and one-sink reject/recover lifecycle accepted; integrated @7f1855e/@983d50f
+EV [wave-3-refactor] removed the obsolete permissive sample-inventory bypass; every evaluator-backed runtime path now validates against its supplied inventory
+EV [wave-3-gate] `gofmt -l .` empty; `go vet ./...` green; `go test ./... -count=1` 299 tests pass in 4 packages; `go test -race ./... -count=1` 299 tests pass; `git diff --check 10d9404..HEAD` green
+WAVE transactional-ai-suggestions/3 status=complete — Task 3.1 reviewed, refactored, integrated, and fully gated
+USAGE [wave-3] model=gpt-5.6-sol agents=1 tokens=unavailable cumulative=unavailable — for your limit %, run /usage
+next: dispatch Wave 4 Task 4.1 (wire `suggest` and `apply` CLI composition)
