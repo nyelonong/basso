@@ -104,3 +104,8 @@ WAVE transactional-ai-suggestions/3 status=complete — Task 3.1 reviewed, refac
 USAGE [wave-3] model=gpt-5.6-sol agents=1 tokens=unavailable cumulative=unavailable — for your limit %, run /usage
 next: dispatch Wave 4 Task 4.1 (wire `suggest` and `apply` CLI composition)
 **WIP** dispatched docs/briefs/4.1-brief.md @f324880996f5e3e14a5a12833abca2e808ae54fe scope=cmd/basso/main.go,cmd/basso/main_test.go,cmd/basso/ai_commands.go,cmd/basso/ai_commands_test.go,go.mod,go.sum tier=top model=gpt-5.6-sol — next: review on return
+EV [waves] 4.1 return reviewed status=complete @4804349bb8d7c47c7b472d3dbd18e78e4dbb2351 — dispatch, configuration ordering, provider selection, bounded source/prompt, candidate-only save/diff, hash-guarded apply, and no-audio seams accepted; integrated @63a59b1
+EV [wave-4-gate] `gofmt -l .` empty; `go vet ./...` green; `go test -race ./... -count=1` 315 tests pass in 4 packages; `CGO_ENABLED=0 go build ./...` green; `git diff --check f324880..HEAD` green
+WAVE transactional-ai-suggestions/4 status=complete — Task 4.1 reviewed, integrated, and fully gated
+USAGE [wave-4] model=gpt-5.6-sol agents=1 tokens=unavailable cumulative=unavailable — for your limit %, run /usage
+next: dispatch Wave 5 Tasks 5.1 (end-to-end workflow proof) and 5.2 (README and `.basso/` contract)
