@@ -80,3 +80,7 @@ EV [wave-1-gate] `gofmt -l .` empty; `go vet ./...` green; `go test ./... -count
 WAVE transactional-ai-suggestions/1 status=complete — Tasks 1.1, 1.2, and 1.3 reviewed, integrated, and fully gated
 USAGE [wave-1] model=gpt-5.6-terra agents=3 tokens=unavailable cumulative=unavailable — for your limit %, run /usage
 next: dispatch Wave 2 (2.1 bounded sandboxed evaluator, 2.2 OpenAI/Ollama adapters, 2.3 suggestion/repair service, 2.4 hash-guarded apply)
+**WIP** dispatched docs/briefs/2.1-brief.md @57c1705a459b3d590d5c2c0cddb6500c51cbbe42 scope=internal/engine/fennel.go,internal/engine/fennel_test.go,internal/engine/evaluator_test.go tier=top model=gpt-5.6-sol — next: review on return
+**WIP** dispatched docs/briefs/2.2-brief.md @57c1705a459b3d590d5c2c0cddb6500c51cbbe42 scope=internal/ai/config.go,internal/ai/config_test.go,internal/ai/openai.go,internal/ai/openai_test.go,internal/ai/ollama.go,internal/ai/ollama_test.go tier=top model=gpt-5.6-sol — next: review on return
+**WIP** queued docs/briefs/2.3-brief.md @57c1705a459b3d590d5c2c0cddb6500c51cbbe42 scope=internal/suggest/service.go,internal/suggest/service_test.go tier=standard model=gpt-5.6-terra — next: dispatch when a runtime slot opens
+**WIP** dispatched docs/briefs/2.4-brief.md @57c1705a459b3d590d5c2c0cddb6500c51cbbe42 scope=internal/suggest/apply.go,internal/suggest/apply_test.go tier=top model=gpt-5.6-sol — next: review on return

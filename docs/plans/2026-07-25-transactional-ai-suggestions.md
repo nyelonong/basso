@@ -100,10 +100,10 @@ independent test strategies.
 | 1.1 | 1 | complete | reviewed `a71ef22`; integrated `ad418a0` |
 | 1.2 | 1 | complete | reviewed `fea7a80`; integrated `34a9eef` |
 | 1.3 | 1 | complete | reviewed `2219b3f`; integrated `f9fb151` |
-| 2.1 | 2 | pending | — |
-| 2.2 | 2 | pending | — |
-| 2.3 | 2 | pending | — |
-| 2.4 | 2 | pending | — |
+| 2.1 | 2 | in-progress | dispatched from `57c1705` |
+| 2.2 | 2 | in-progress | dispatched from `57c1705` |
+| 2.3 | 2 | in-progress | queued from `57c1705` |
+| 2.4 | 2 | in-progress | dispatched from `57c1705` |
 | 3.1 | 3 | pending | — |
 | 4.1 | 4 | pending | — |
 | 5.1 | 5 | pending | — |
