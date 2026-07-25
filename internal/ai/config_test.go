@@ -56,6 +56,11 @@ func TestResolveConfig_RequiresProviderModelAndOpenAIKey(t *testing.T) {
 			overrides: Overrides{Provider: "other", Model: "model"},
 		},
 		{
+			name:      "provider must be exact",
+			overrides: Overrides{Provider: " openai ", Model: "model"},
+			env:       map[string]string{"OPENAI_API_KEY": "test-secret"},
+		},
+		{
 			name:      "OpenAI key",
 			overrides: Overrides{Provider: "openai", Model: "model"},
 		},
@@ -66,6 +71,10 @@ func TestResolveConfig_RequiresProviderModelAndOpenAIKey(t *testing.T) {
 		{
 			name:      "non-positive timeout",
 			overrides: Overrides{Provider: "ollama", Model: "model", Timeout: "0s"},
+		},
+		{
+			name:      "timeout must parse strictly",
+			overrides: Overrides{Provider: "ollama", Model: "model", Timeout: " 3s "},
 		},
 	}
 
@@ -131,7 +140,9 @@ func TestResolveConfig_DefaultsTimeoutAndOllamaURL(t *testing.T) {
 		"ftp://ollama.example",
 		"http://user:pass@ollama.example",
 		"http://ollama.example?query=yes",
+		"http://ollama.example?",
 		"http://ollama.example#fragment",
+		"http://ollama.example#",
 		"http:///missing-host",
 	} {
 		t.Run("rejects "+raw, func(t *testing.T) {

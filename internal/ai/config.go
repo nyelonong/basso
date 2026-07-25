@@ -36,10 +36,10 @@ func ResolveConfig(overrides Overrides, getenv func(string) string) (Config, err
 	model := resolveValue(overrides.Model, getenv("BASSO_AI_MODEL"))
 	timeoutValue := resolveValue(overrides.Timeout, getenv("BASSO_AI_TIMEOUT"))
 
-	if provider == "" {
+	if strings.TrimSpace(provider) == "" {
 		return Config{}, errors.New("ai: provider is required")
 	}
-	if model == "" {
+	if strings.TrimSpace(model) == "" {
 		return Config{}, errors.New("ai: model is required")
 	}
 	if provider != "openai" && provider != "ollama" {
@@ -86,9 +86,9 @@ func ResolveConfig(overrides Overrides, getenv func(string) string) (Config, err
 
 func resolveValue(override string, environment string) string {
 	if override != "" {
-		return strings.TrimSpace(override)
+		return override
 	}
-	return strings.TrimSpace(environment)
+	return environment
 }
 
 func normalizeHTTPOrigin(raw string) (*url.URL, error) {
@@ -105,10 +105,10 @@ func normalizeHTTPOrigin(raw string) (*url.URL, error) {
 	if parsed.User != nil {
 		return nil, errors.New("credentials are not allowed")
 	}
-	if parsed.RawQuery != "" {
+	if parsed.RawQuery != "" || parsed.ForceQuery {
 		return nil, errors.New("query is not allowed")
 	}
-	if parsed.Fragment != "" {
+	if parsed.Fragment != "" || strings.Contains(raw, "#") {
 		return nil, errors.New("fragment is not allowed")
 	}
 
