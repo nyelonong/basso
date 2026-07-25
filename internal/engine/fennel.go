@@ -1,7 +1,9 @@
 package engine
 
 import (
+	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"math/rand"
 	"os"
@@ -22,7 +24,68 @@ var fennelCompilerSource string
 // last write event on the watched file before reading it and staging its
 // contents as the pending source. This absorbs multi-chunk editor saves
 // (several write events for one logical save) into a single reload.
-const fennelReloadDebounce = 100 * time.Millisecond
+const (
+	fennelReloadDebounce    = 100 * time.Millisecond
+	maxFennelSourceBytes    = 256 * 1024
+	legacyEvaluationTimeout = 250 * time.Millisecond
+)
+
+// EvaluationPhase identifies the stage at which Fennel evaluation failed.
+type EvaluationPhase string
+
+const (
+	EvaluationPhaseCompile  EvaluationPhase = "compile"
+	EvaluationPhaseEvaluate EvaluationPhase = "evaluate"
+	EvaluationPhaseTimeout  EvaluationPhase = "timeout"
+	EvaluationPhaseValidate EvaluationPhase = "validate"
+)
+
+// EvaluationError reports a bounded Fennel evaluation failure for one bar.
+type EvaluationError struct {
+	Phase EvaluationPhase
+	Bar   int
+	Err   error
+}
+
+func (e *EvaluationError) Error() string {
+	return fmt.Sprintf("fennel: %s bar %d: %v", e.Phase, e.Bar, e.Err)
+}
+
+// Unwrap preserves the interpreter, validation, or context error for callers
+// using errors.Is or errors.As.
+func (e *EvaluationError) Unwrap() error {
+	return e.Err
+}
+
+// Evaluator compiles, runs, maps, and validates untrusted Fennel source in a
+// fresh, sandboxed Lua state for every bar.
+type Evaluator struct {
+	inventory       SoundInventory
+	timeout         time.Duration
+	allowAnySamples bool
+}
+
+// NewEvaluator constructs an evaluator with an immutable copy of inventory.
+func NewEvaluator(inventory SoundInventory, timeout time.Duration) *Evaluator {
+	inventoryCopy := make(SoundInventory, len(inventory))
+	for name := range inventory {
+		inventoryCopy[name] = struct{}{}
+	}
+
+	return &Evaluator{
+		inventory: inventoryCopy,
+		timeout:   timeout,
+	}
+}
+
+// newLegacyEvaluator preserves FennelProvider's historical acceptance of
+// caller-resolved sample names until its constructor receives an explicit
+// inventory in the transactional playback task.
+func newLegacyEvaluator() *Evaluator {
+	evaluator := NewEvaluator(nil, legacyEvaluationTimeout)
+	evaluator.allowAnySamples = true
+	return evaluator
+}
 
 // FennelProvider is a PatternProvider that compiles and evaluates a Fennel
 // (Lisp) script through an embedded gopher-lua VM.
@@ -34,7 +97,8 @@ const fennelReloadDebounce = 100 * time.Millisecond
 // Engine.Run's goroutine) reads it, so pendingMu guards that one field
 // explicitly.
 type FennelProvider struct {
-	source string
+	source    string
+	evaluator *Evaluator
 
 	pendingMu sync.Mutex
 	pending   *string
@@ -48,7 +112,10 @@ type FennelProvider struct {
 // Next's doc comment). It has no file watcher: it never changes source on
 // its own. Use NewFromFile for that.
 func New(source string) (*FennelProvider, error) {
-	return &FennelProvider{source: source}, nil
+	return &FennelProvider{
+		source:    source,
+		evaluator: newLegacyEvaluator(),
+	}, nil
 }
 
 // A function on FennelProvider's file-backed path, NewFromFile, reads its
@@ -74,6 +141,7 @@ func NewFromFile(path string) (*FennelProvider, error) {
 
 	fp := &FennelProvider{
 		source:      string(data),
+		evaluator:   newLegacyEvaluator(),
 		watcher:     watcher,
 		watcherDone: make(chan struct{}),
 	}
@@ -168,16 +236,55 @@ func (fp *FennelProvider) Next(bar int) ([]Hit, int, int, error) {
 		fp.source = *pending
 	}
 
+	result, err := fp.evaluator.Evaluate(context.Background(), fp.source, bar)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+
+	return result.Hits, result.BPM, result.StepsPerBar, nil
+}
+
+// Evaluate compiles and evaluates source for bar in a fresh sandboxed Lua
+// state and validates the mapped result against the evaluator's inventory.
+func (e *Evaluator) Evaluate(ctx context.Context, source string, bar int) (Bar, error) {
+	if ctx == nil {
+		return Bar{}, newEvaluationError(
+			EvaluationPhaseEvaluate,
+			bar,
+			errors.New("context must not be nil"),
+		)
+	}
+	if len(source) > maxFennelSourceBytes {
+		return Bar{}, newEvaluationError(
+			EvaluationPhaseCompile,
+			bar,
+			fmt.Errorf("source exceeds %d bytes", maxFennelSourceBytes),
+		)
+	}
+
+	evaluationCtx, cancel := context.WithTimeout(ctx, e.timeout)
+	defer cancel()
+
 	L := lua.NewState()
 	defer L.Close()
+	L.SetContext(evaluationCtx)
 
 	if err := L.DoString(fennelCompilerSource); err != nil {
-		return nil, 0, 0, fmt.Errorf("fennel: load compiler: %w", err)
+		return Bar{}, classifyEvaluationError(
+			evaluationCtx,
+			EvaluationPhaseCompile,
+			bar,
+			fmt.Errorf("load compiler: %w", err),
+		)
 	}
 	fennelMod, ok := L.Get(-1).(*lua.LTable)
 	L.Pop(1)
 	if !ok {
-		return nil, 0, 0, fmt.Errorf("fennel: compiler did not return a module table")
+		return Bar{}, newEvaluationError(
+			EvaluationPhaseCompile,
+			bar,
+			errors.New("compiler did not return a module table"),
+		)
 	}
 
 	bpm := 120
@@ -192,29 +299,81 @@ func (fp *FennelProvider) Next(bar int) ([]Hit, int, int, error) {
 		return 0
 	}))
 
-	evalFn := fennelMod.RawGetString("eval")
-	L.Push(evalFn)
-	L.Push(lua.LString(fp.source))
+	removeUnsafeGlobals(L)
+
+	compileFn := fennelMod.RawGetString("compileString")
+	if compileFn == lua.LNil {
+		compileFn = fennelMod.RawGetString("compile-string")
+	}
+	L.Push(compileFn)
+	L.Push(lua.LString(source))
 	if err := L.PCall(1, 1, nil); err != nil {
-		return nil, 0, 0, fmt.Errorf("fennel: eval source: %w", err)
+		return Bar{}, classifyEvaluationError(
+			evaluationCtx,
+			EvaluationPhaseCompile,
+			bar,
+			fmt.Errorf("compile source: %w", err),
+		)
+	}
+	luaSource, ok := L.Get(-1).(lua.LString)
+	L.Pop(1)
+	if !ok {
+		return Bar{}, newEvaluationError(
+			EvaluationPhaseCompile,
+			bar,
+			errors.New("compiler did not return Lua source"),
+		)
+	}
+
+	chunk, err := L.LoadString(string(luaSource))
+	if err != nil {
+		return Bar{}, classifyEvaluationError(
+			evaluationCtx,
+			EvaluationPhaseCompile,
+			bar,
+			fmt.Errorf("load compiled source: %w", err),
+		)
+	}
+
+	L.Push(chunk)
+	if err := L.PCall(0, 1, nil); err != nil {
+		return Bar{}, classifyEvaluationError(
+			evaluationCtx,
+			EvaluationPhaseEvaluate,
+			bar,
+			fmt.Errorf("evaluate source: %w", err),
+		)
 	}
 	patternVal := L.Get(-1)
 	L.Pop(1)
 	patternFn, ok := patternVal.(*lua.LFunction)
 	if !ok {
-		return nil, 0, 0, fmt.Errorf("fennel: source did not yield a pattern function (last form must be `pattern`)")
+		return Bar{}, newEvaluationError(
+			EvaluationPhaseEvaluate,
+			bar,
+			errors.New("source did not yield a pattern function (last form must be `pattern`)"),
+		)
 	}
 
 	L.Push(patternFn)
 	L.Push(lua.LNumber(bar))
 	if err := L.PCall(1, 1, nil); err != nil {
-		return nil, 0, 0, fmt.Errorf("fennel: pattern(%d): %w", bar, err)
+		return Bar{}, classifyEvaluationError(
+			evaluationCtx,
+			EvaluationPhaseEvaluate,
+			bar,
+			fmt.Errorf("pattern(%d): %w", bar, err),
+		)
 	}
 	result := L.Get(-1)
 	L.Pop(1)
 	hitsTable, ok := result.(*lua.LTable)
 	if !ok {
-		return nil, 0, 0, fmt.Errorf("fennel: pattern(%d) did not return a table", bar)
+		return Bar{}, newEvaluationError(
+			EvaluationPhaseEvaluate,
+			bar,
+			fmt.Errorf("pattern(%d) did not return a table", bar),
+		)
 	}
 
 	n := hitsTable.Len()
@@ -222,13 +381,21 @@ func (fp *FennelProvider) Next(bar int) ([]Hit, int, int, error) {
 	for i := 1; i <= n; i++ {
 		row, ok := hitsTable.RawGetInt(i).(*lua.LTable)
 		if !ok {
-			return nil, 0, 0, fmt.Errorf("fennel: hit %d is not a table", i)
+			return Bar{}, newEvaluationError(
+				EvaluationPhaseEvaluate,
+				bar,
+				fmt.Errorf("hit %d is not a table", i),
+			)
 		}
 
 		sample := row.RawGetString("sample")
 		note := row.RawGetString("note")
 		if (sample != lua.LNil) == (note != lua.LNil) {
-			return nil, 0, 0, fmt.Errorf("fennel: hit %d must have exactly one of :sample or :note", i)
+			return Bar{}, newEvaluationError(
+				EvaluationPhaseEvaluate,
+				bar,
+				fmt.Errorf("hit %d must have exactly one of :sample or :note", i),
+			)
 		}
 
 		pan := row.RawGetString("pan")
@@ -281,5 +448,100 @@ func (fp *FennelProvider) Next(bar int) ([]Hit, int, int, error) {
 		})
 	}
 
-	return hits, bpm, stepsPerBar, nil
+	mappedBar := Bar{
+		Hits:        hits,
+		BPM:         bpm,
+		StepsPerBar: stepsPerBar,
+	}
+	inventory := e.inventory
+	if e.allowAnySamples {
+		inventory = inventoryIncludingBarSamples(inventory, mappedBar)
+	}
+	if err := ValidateBar(mappedBar, inventory); err != nil {
+		return Bar{}, newEvaluationError(EvaluationPhaseValidate, bar, err)
+	}
+
+	return mappedBar, nil
+}
+
+// Preflight evaluates every bar in the inclusive horizon using a fresh state
+// per Evaluate call.
+func (e *Evaluator) Preflight(
+	ctx context.Context,
+	source string,
+	firstBar int,
+	lastBar int,
+) error {
+	if firstBar < 0 {
+		return newEvaluationError(
+			EvaluationPhaseValidate,
+			firstBar,
+			errors.New("preflight first bar must not be negative"),
+		)
+	}
+	if lastBar < firstBar {
+		return newEvaluationError(
+			EvaluationPhaseValidate,
+			firstBar,
+			errors.New("preflight horizon must not be inverted"),
+		)
+	}
+
+	for bar := firstBar; ; bar++ {
+		if _, err := e.Evaluate(ctx, source, bar); err != nil {
+			return err
+		}
+		if bar == lastBar {
+			return nil
+		}
+	}
+}
+
+func removeUnsafeGlobals(L *lua.LState) {
+	for _, name := range []string{
+		"os",
+		"io",
+		"debug",
+		"package",
+		"require",
+		"dofile",
+		"loadfile",
+		"channel",
+		"coroutine",
+	} {
+		L.SetGlobal(name, lua.LNil)
+	}
+}
+
+func classifyEvaluationError(
+	ctx context.Context,
+	phase EvaluationPhase,
+	bar int,
+	err error,
+) error {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return newEvaluationError(EvaluationPhaseTimeout, bar, ctxErr)
+	}
+	return newEvaluationError(phase, bar, err)
+}
+
+func newEvaluationError(phase EvaluationPhase, bar int, err error) error {
+	return &EvaluationError{
+		Phase: phase,
+		Bar:   bar,
+		Err:   err,
+	}
+}
+
+func inventoryIncludingBarSamples(inventory SoundInventory, bar Bar) SoundInventory {
+	result := make(SoundInventory, len(inventory)+len(bar.Hits))
+	for name := range inventory {
+		result[name] = struct{}{}
+	}
+	for _, hit := range bar.Hits {
+		if hit.Sample != "" {
+			result[hit.Sample] = struct{}{}
+		}
+	}
+	return result
 }

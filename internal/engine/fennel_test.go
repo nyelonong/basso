@@ -33,6 +33,7 @@ pattern
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
+	provider.evaluator = NewEvaluator(fennelProviderTestInventory(), legacyEvaluationTimeout)
 
 	hits, bpm, stepsPerBar, err := provider.Next(0)
 	if err != nil {
@@ -82,6 +83,7 @@ pattern
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
+	provider.evaluator = NewEvaluator(fennelProviderTestInventory(), legacyEvaluationTimeout)
 
 	hits, _, _, err := provider.Next(0)
 	if err != nil {
@@ -117,6 +119,7 @@ pattern
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
+	provider.evaluator = NewEvaluator(fennelProviderTestInventory(), legacyEvaluationTimeout)
 
 	hits, _, _, err := provider.Next(0)
 	if err != nil {
@@ -155,6 +158,7 @@ pattern
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
+	provider.evaluator = NewEvaluator(fennelProviderTestInventory(), legacyEvaluationTimeout)
 
 	hits, _, _, err := provider.Next(0)
 	if err != nil {
@@ -186,6 +190,7 @@ pattern
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
+	provider.evaluator = NewEvaluator(fennelProviderTestInventory(), legacyEvaluationTimeout)
 
 	for bar := 0; bar < 20; bar++ {
 		hits, _, _, err := provider.Next(bar)
@@ -215,6 +220,7 @@ pattern
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
+	provider.evaluator = NewEvaluator(fennelProviderTestInventory(), legacyEvaluationTimeout)
 
 	hits, _, _, err := provider.Next(0)
 	if err != nil {
@@ -243,6 +249,7 @@ pattern
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
+	provider.evaluator = NewEvaluator(fennelProviderTestInventory(), legacyEvaluationTimeout)
 
 	hits, _, _, err := provider.Next(0)
 	if err != nil {
@@ -276,6 +283,7 @@ func TestFennelProvider_HitRequiresExactlyOneOfSampleOrNote(t *testing.T) {
 			if err != nil {
 				t.Fatalf("New() error = %v, want nil", err)
 			}
+			provider.evaluator = NewEvaluator(fennelProviderTestInventory(), legacyEvaluationTimeout)
 
 			if _, _, _, err := provider.Next(0); err == nil {
 				t.Fatalf("Next(0) error = nil, want error")
@@ -301,6 +309,7 @@ pattern
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
+	provider.evaluator = NewEvaluator(fennelProviderTestInventory(), legacyEvaluationTimeout)
 
 	_, bpm, stepsPerBar, err := provider.Next(0)
 	if err != nil {
@@ -313,4 +322,16 @@ pattern
 	if stepsPerBar != 12 {
 		t.Errorf("stepsPerBar = %d, want 12", stepsPerBar)
 	}
+}
+
+func fennelProviderTestInventory() SoundInventory {
+	inventory := testInventory()
+	for _, name := range []string{
+		"hightom.wav",
+		"kick1.wav",
+		"maracas.wav",
+	} {
+		inventory[name] = struct{}{}
+	}
+	return inventory
 }
