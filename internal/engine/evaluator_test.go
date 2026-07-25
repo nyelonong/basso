@@ -118,6 +118,48 @@ func TestEvaluator_RejectsOversizedSource(t *testing.T) {
 	assertEvaluationPhase(t, err, EvaluationPhaseCompile, 7)
 }
 
+func TestEvaluator_RejectsMissingAndInvalidNumericHitFields(t *testing.T) {
+	tests := []struct {
+		name string
+		hit  string
+	}{
+		{
+			name: "missing step",
+			hit:  `{:sample "kick2.wav"}`,
+		},
+		{
+			name: "non-numeric step",
+			hit:  `{:step "zero" :sample "kick2.wav"}`,
+		},
+		{
+			name: "non-numeric pan",
+			hit:  `{:step 0 :sample "kick2.wav" :pan "center"}`,
+		},
+		{
+			name: "non-numeric velocity",
+			hit:  `{:step 0 :sample "kick2.wav" :velocity "loud"}`,
+		},
+		{
+			name: "non-numeric length",
+			hit:  `{:step 0 :note "C2" :length "long"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := fmt.Sprintf(`
+(fn pattern [bar]
+  [%s])
+pattern
+`, tt.hit)
+
+			evaluator := NewEvaluator(testInventory(), evaluatorTestTimeout)
+			_, err := evaluator.Evaluate(context.Background(), source, 2)
+			assertEvaluationPhase(t, err, EvaluationPhaseEvaluate, 2)
+		})
+	}
+}
+
 func TestEvaluator_TimesOutInfiniteLoop(t *testing.T) {
 	evaluator := NewEvaluator(testInventory(), evaluatorTestTimeout)
 	source := `

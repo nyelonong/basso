@@ -398,33 +398,50 @@ func (e *Evaluator) Evaluate(ctx context.Context, source string, bar int) (Bar, 
 			)
 		}
 
-		pan := row.RawGetString("pan")
-		var panValue float64
-		switch {
-		case pan != lua.LNil:
-			panValue = float64(lua.LVAsNumber(pan))
-		case note != lua.LNil:
+		stepValue, hasStep, err := mappedHitNumber(row, "step", i)
+		if err != nil {
+			return Bar{}, newEvaluationError(EvaluationPhaseEvaluate, bar, err)
+		}
+		if !hasStep {
+			return Bar{}, newEvaluationError(
+				EvaluationPhaseEvaluate,
+				bar,
+				fmt.Errorf("hit %d :step is required", i),
+			)
+		}
+
+		panValue, hasPan, err := mappedHitNumber(row, "pan", i)
+		if err != nil {
+			return Bar{}, newEvaluationError(EvaluationPhaseEvaluate, bar, err)
+		}
+		if !hasPan && note != lua.LNil {
 			// :note hits default to centered pan, not random: bass is
 			// conventionally centered, and a low, often-quiet synthesized
 			// note is easy to lose when random pan happens to land near a
 			// hard-left/hard-right extreme.
 			panValue = 0
-		default:
+		}
+		if !hasPan && note == lua.LNil {
 			// :sample hits default to random in [-1,1], same precedent as
 			// StaticProvider (3.1) and the original m001 per-fire pan.
 			panValue = rand.Float64()*2 - 1
 		}
 
-		velocity := row.RawGetString("velocity")
-		velocityValue := 1.0 // default
-		if velocity != lua.LNil {
-			velocityValue = float64(lua.LVAsNumber(velocity))
+		velocityValue, hasVelocity, err := mappedHitNumber(row, "velocity", i)
+		if err != nil {
+			return Bar{}, newEvaluationError(EvaluationPhaseEvaluate, bar, err)
+		}
+		if !hasVelocity {
+			velocityValue = 1
 		}
 
-		length := row.RawGetString("length")
-		lengthValue := 1 // default: a short one-step note; meaningful for :note hits only
-		if length != lua.LNil {
-			lengthValue = int(lua.LVAsNumber(length))
+		lengthNumber, hasLength, err := mappedHitNumber(row, "length", i)
+		if err != nil {
+			return Bar{}, newEvaluationError(EvaluationPhaseEvaluate, bar, err)
+		}
+		lengthValue := 1
+		if hasLength {
+			lengthValue = int(lengthNumber)
 		}
 
 		instrument := row.RawGetString("instrument")
@@ -438,7 +455,7 @@ func (e *Evaluator) Evaluate(ctx context.Context, source string, bar int) (Bar, 
 		}
 
 		hits = append(hits, Hit{
-			Step:       int(lua.LVAsNumber(row.RawGetString("step"))),
+			Step:       int(stepValue),
 			Sample:     lua.LVAsString(sample),
 			Note:       lua.LVAsString(note),
 			Instrument: instrumentValue,
@@ -531,6 +548,19 @@ func newEvaluationError(phase EvaluationPhase, bar int, err error) error {
 		Bar:   bar,
 		Err:   err,
 	}
+}
+
+func mappedHitNumber(row *lua.LTable, field string, hit int) (float64, bool, error) {
+	value := row.RawGetString(field)
+	if value == lua.LNil {
+		return 0, false, nil
+	}
+
+	number, ok := value.(lua.LNumber)
+	if !ok {
+		return 0, false, fmt.Errorf("hit %d :%s must be a number", hit, field)
+	}
+	return float64(number), true, nil
 }
 
 func inventoryIncludingBarSamples(inventory SoundInventory, bar Bar) SoundInventory {
