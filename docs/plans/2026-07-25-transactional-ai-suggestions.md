@@ -104,7 +104,7 @@ independent test strategies.
 | 2.2 | 2 | complete | reviewed `2629a4f`; integrated through `56734dd` |
 | 2.3 | 2 | complete | reviewed `528876f`; integrated `3b300d0`/`0ec79ec` |
 | 2.4 | 2 | complete | reviewed `77a7bf4`; integrated `050492a`/`febcc87` |
-| 3.1 | 3 | pending | — |
+| 3.1 | 3 | in-progress | dispatched from `10d9404` |
 | 4.1 | 4 | pending | — |
 | 5.1 | 5 | pending | — |
 | 5.2 | 5 | pending | — |

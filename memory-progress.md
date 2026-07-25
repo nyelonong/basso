@@ -96,3 +96,4 @@ EV [wave-2-gate] `gofmt -l .` empty; `go vet ./...` green; `go test ./... -count
 WAVE transactional-ai-suggestions/2 status=complete — Tasks 2.1 through 2.4 reviewed, corrected, integrated, and fully gated
 USAGE [wave-2] models=gpt-5.6-sol,gpt-5.6-terra agents=4 tokens=unavailable cumulative=unavailable — for your limit %, run /usage
 next: dispatch Wave 3 Task 3.1 (transactional runtime and directory-based reload)
+**WIP** dispatched docs/briefs/3.1-brief.md @10d94045cbe6e9d27e22890679ed48f16c75123f scope=internal/engine/fennel.go,internal/engine/fennel_test.go,internal/engine/fennel_reload_test.go,internal/engine/diagnostic.go,internal/engine/diagnostic_test.go,cmd/basso/main.go,cmd/basso/main_test.go tier=top model=gpt-5.6-sol — next: review on return
