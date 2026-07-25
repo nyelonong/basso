@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -78,15 +79,6 @@ func NewEvaluator(inventory SoundInventory, timeout time.Duration) *Evaluator {
 	}
 }
 
-// newLegacyEvaluator preserves FennelProvider's historical acceptance of
-// caller-resolved sample names until its constructor receives an explicit
-// inventory in the transactional playback task.
-func newLegacyEvaluator() *Evaluator {
-	evaluator := NewEvaluator(nil, legacyEvaluationTimeout)
-	evaluator.allowAnySamples = true
-	return evaluator
-}
-
 // FennelProvider is a PatternProvider that compiles and evaluates a Fennel
 // (Lisp) script through an embedded gopher-lua VM.
 //
@@ -99,6 +91,13 @@ func newLegacyEvaluator() *Evaluator {
 type FennelProvider struct {
 	source    string
 	evaluator *Evaluator
+	reporter  DiagnosticReporter
+	lastGood  *Bar
+
+	diagnosticMu     sync.Mutex
+	reporterMu       sync.Mutex
+	observedRevision string
+	emitted          map[string]struct{}
 
 	pendingMu sync.Mutex
 	pending   *string
@@ -107,14 +106,27 @@ type FennelProvider struct {
 	watcherDone chan struct{}
 }
 
-// New constructs a FennelProvider holding source. It does not compile or
-// evaluate source; Next re-evaluates the held source fresh on every call (see
-// Next's doc comment). It has no file watcher: it never changes source on
-// its own. Use NewFromFile for that.
-func New(source string) (*FennelProvider, error) {
+// New constructs a FennelProvider and validates its initial source at bar 0.
+func New(
+	source string,
+	evaluator *Evaluator,
+	reporter DiagnosticReporter,
+) (*FennelProvider, error) {
+	if evaluator == nil {
+		return nil, errors.New("fennel: evaluator must not be nil")
+	}
+	initial, err := evaluator.Evaluate(context.Background(), source, 0)
+	if err != nil {
+		return nil, err
+	}
+
 	return &FennelProvider{
-		source:    source,
-		evaluator: newLegacyEvaluator(),
+		source:           source,
+		evaluator:        evaluator,
+		reporter:         reporter,
+		lastGood:         &initial,
+		observedRevision: revisionSHA256(source),
+		emitted:          make(map[string]struct{}),
 	}, nil
 }
 
@@ -124,28 +136,34 @@ func New(source string) (*FennelProvider, error) {
 // source, which Next picks up at the start of its next call — see
 // setPendingSource. Callers must call Close when done with the provider, to
 // stop the watcher goroutine and release its fsnotify handle.
-func NewFromFile(path string) (*FennelProvider, error) {
+func NewFromFile(
+	path string,
+	evaluator *Evaluator,
+	reporter DiagnosticReporter,
+) (*FennelProvider, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("fennel: read %s: %w", path, err)
+	}
+	fp, err := New(string(data), evaluator, reporter)
+	if err != nil {
+		return nil, err
 	}
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, fmt.Errorf("fennel: create watcher: %w", err)
 	}
-	if err := watcher.Add(path); err != nil {
+	cleanPath := filepath.Clean(path)
+	parent := filepath.Dir(cleanPath)
+	if err := watcher.Add(parent); err != nil {
 		watcher.Close()
-		return nil, fmt.Errorf("fennel: watch %s: %w", path, err)
+		return nil, fmt.Errorf("fennel: watch %s: %w", parent, err)
 	}
 
-	fp := &FennelProvider{
-		source:      string(data),
-		evaluator:   newLegacyEvaluator(),
-		watcher:     watcher,
-		watcherDone: make(chan struct{}),
-	}
-	go fp.watchLoop(path)
+	fp.watcher = watcher
+	fp.watcherDone = make(chan struct{})
+	go fp.watchLoop(cleanPath)
 
 	return fp, nil
 }
@@ -154,9 +172,46 @@ func NewFromFile(path string) (*FennelProvider, error) {
 // Next call. It is also used directly by tests as a deterministic hook for
 // this apply logic, without needing a real file or a real fsnotify event.
 func (fp *FennelProvider) setPendingSource(source string) {
+	fp.observeRevision(source)
 	fp.pendingMu.Lock()
 	defer fp.pendingMu.Unlock()
 	fp.pending = &source
+}
+
+func (fp *FennelProvider) observeRevision(source string) {
+	revision := revisionSHA256(source)
+	fp.diagnosticMu.Lock()
+	defer fp.diagnosticMu.Unlock()
+	if revision == fp.observedRevision {
+		return
+	}
+	fp.observedRevision = revision
+	fp.emitted = make(map[string]struct{})
+}
+
+func (fp *FennelProvider) report(diagnostic Diagnostic) {
+	if fp.reporter == nil {
+		return
+	}
+
+	key := diagnosticKey(diagnostic)
+	fp.diagnosticMu.Lock()
+	if _, exists := fp.emitted[key]; exists {
+		fp.diagnosticMu.Unlock()
+		return
+	}
+	fp.emitted[key] = struct{}{}
+	fp.diagnosticMu.Unlock()
+
+	fp.reporterMu.Lock()
+	defer fp.reporterMu.Unlock()
+	fp.reporter(diagnostic)
+}
+
+func (fp *FennelProvider) observedRevisionSHA256() string {
+	fp.diagnosticMu.Lock()
+	defer fp.diagnosticMu.Unlock()
+	return fp.observedRevision
 }
 
 // takePendingSource returns the staged pending source, if any, clearing it,
@@ -175,6 +230,7 @@ func (fp *FennelProvider) takePendingSource() *string {
 // NewFromFile.
 func (fp *FennelProvider) watchLoop(path string) {
 	var debounce *time.Timer
+	var debounceC <-chan time.Time
 	defer func() {
 		if debounce != nil {
 			debounce.Stop()
@@ -190,26 +246,39 @@ func (fp *FennelProvider) watchLoop(path string) {
 			if !ok {
 				return
 			}
-			if event.Op&(fsnotify.Write|fsnotify.Create) == 0 {
+			if filepath.Clean(event.Name) != path {
 				continue
 			}
-			if debounce != nil {
-				debounce.Stop()
+			if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename|fsnotify.Remove) == 0 {
+				continue
 			}
-			debounce = time.AfterFunc(fennelReloadDebounce, func() {
-				data, err := os.ReadFile(path)
-				if err != nil {
-					// Transient (e.g. mid-write on some platforms/editors);
-					// the next write event will retry.
-					return
+			if debounce == nil {
+				debounce = time.NewTimer(fennelReloadDebounce)
+			} else {
+				if !debounce.Stop() {
+					select {
+					case <-debounce.C:
+					default:
+					}
 				}
-				fp.setPendingSource(string(data))
-			})
+				debounce.Reset(fennelReloadDebounce)
+			}
+			debounceC = debounce.C
 
-		case _, ok := <-fp.watcher.Errors:
+		case <-debounceC:
+			debounceC = nil
+			data, err := os.ReadFile(path)
+			if err != nil {
+				fp.report(watchDiagnostic(fp.observedRevisionSHA256(), err))
+				continue
+			}
+			fp.setPendingSource(string(data))
+
+		case err, ok := <-fp.watcher.Errors:
 			if !ok {
 				return
 			}
+			fp.report(watchDiagnostic(fp.observedRevisionSHA256(), err))
 		}
 	}
 }
@@ -233,15 +302,40 @@ func (fp *FennelProvider) Close() error {
 // function), calls pattern(bar), and maps the returned hit tables to Hits.
 func (fp *FennelProvider) Next(bar int) ([]Hit, int, int, error) {
 	if pending := fp.takePendingSource(); pending != nil {
-		fp.source = *pending
+		result, err := fp.evaluator.Evaluate(context.Background(), *pending, bar)
+		if err == nil {
+			fp.source = *pending
+			return fp.rememberAndReturn(result)
+		}
+		fp.report(evaluationDiagnostic(*pending, bar, err))
 	}
 
 	result, err := fp.evaluator.Evaluate(context.Background(), fp.source, bar)
 	if err != nil {
+		fp.report(evaluationDiagnostic(fp.source, bar, err))
+		if fp.lastGood != nil {
+			fallback := cloneBar(*fp.lastGood)
+			return fallback.Hits, fallback.BPM, fallback.StepsPerBar, nil
+		}
 		return nil, 0, 0, err
 	}
 
-	return result.Hits, result.BPM, result.StepsPerBar, nil
+	return fp.rememberAndReturn(result)
+}
+
+func (fp *FennelProvider) rememberAndReturn(result Bar) ([]Hit, int, int, error) {
+	stored := cloneBar(result)
+	fp.lastGood = &stored
+	return cloneHits(result.Hits), result.BPM, result.StepsPerBar, nil
+}
+
+func cloneBar(bar Bar) Bar {
+	bar.Hits = cloneHits(bar.Hits)
+	return bar
+}
+
+func cloneHits(hits []Hit) []Hit {
+	return append([]Hit(nil), hits...)
 }
 
 // Evaluate compiles and evaluates source for bar in a fresh sandboxed Lua
@@ -362,7 +456,7 @@ func (e *Evaluator) Evaluate(ctx context.Context, source string, bar int) (Bar, 
 			evaluationCtx,
 			EvaluationPhaseEvaluate,
 			bar,
-			fmt.Errorf("pattern(%d): %w", bar, err),
+			fmt.Errorf("pattern: %w", err),
 		)
 	}
 	result := L.Get(-1)
@@ -372,7 +466,7 @@ func (e *Evaluator) Evaluate(ctx context.Context, source string, bar int) (Bar, 
 		return Bar{}, newEvaluationError(
 			EvaluationPhaseEvaluate,
 			bar,
-			fmt.Errorf("pattern(%d) did not return a table", bar),
+			errors.New("pattern did not return a table"),
 		)
 	}
 

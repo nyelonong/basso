@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -99,5 +101,54 @@ func TestMain_RejectsMissingArg(t *testing.T) {
 				t.Errorf("provider constructor was called, want not called")
 			}
 		})
+	}
+}
+
+func TestStderrDiagnosticReporter(t *testing.T) {
+	var stderr bytes.Buffer
+	reporter := stderrDiagnosticReporter(&stderr)
+	bar := 3
+	reporter(engine.Diagnostic{
+		RevisionSHA256: strings.Repeat("a", 64),
+		Bar:            &bar,
+		Phase:          engine.DiagnosticPhaseValidate,
+		Err:            errors.New("bad hit"),
+	})
+
+	got := stderr.String()
+	for _, want := range []string{
+		strings.Repeat("a", 64),
+		"bar 3",
+		"validate",
+		"bad hit",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("stderr = %q, want substring %q", got, want)
+		}
+	}
+}
+
+func TestRun_InvalidInitialSourceDoesNotConstructSink(t *testing.T) {
+	invalid := errors.New("invalid initial source")
+	sinkConstructed := false
+
+	err := run(
+		context.Background(),
+		[]string{"pattern.fnl"},
+		io.Discard,
+		func(string) (closablePatternProvider, error) {
+			return nil, invalid
+		},
+		func() engine.AudioSink {
+			sinkConstructed = true
+			return newFakeSink()
+		},
+	)
+
+	if !errors.Is(err, invalid) {
+		t.Fatalf("run() error = %v, want %v", err, invalid)
+	}
+	if sinkConstructed {
+		t.Fatal("audio sink was constructed for invalid initial source")
 	}
 }
