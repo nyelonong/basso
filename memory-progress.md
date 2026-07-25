@@ -84,3 +84,15 @@ next: dispatch Wave 2 (2.1 bounded sandboxed evaluator, 2.2 OpenAI/Ollama adapte
 **WIP** dispatched docs/briefs/2.2-brief.md @57c1705a459b3d590d5c2c0cddb6500c51cbbe42 scope=internal/ai/config.go,internal/ai/config_test.go,internal/ai/openai.go,internal/ai/openai_test.go,internal/ai/ollama.go,internal/ai/ollama_test.go tier=top model=gpt-5.6-sol — next: review on return
 **WIP** queued docs/briefs/2.3-brief.md @57c1705a459b3d590d5c2c0cddb6500c51cbbe42 scope=internal/suggest/service.go,internal/suggest/service_test.go tier=standard model=gpt-5.6-terra — next: dispatch when a runtime slot opens
 **WIP** dispatched docs/briefs/2.4-brief.md @57c1705a459b3d590d5c2c0cddb6500c51cbbe42 scope=internal/suggest/apply.go,internal/suggest/apply_test.go tier=top model=gpt-5.6-sol — next: review on return
+**WIP** dispatched docs/briefs/2.3-brief.md @57c1705a459b3d590d5c2c0cddb6500c51cbbe42 scope=internal/suggest/service.go,internal/suggest/service_test.go tier=standard model=gpt-5.6-terra — next: review on return
+EV [waves] 2.1 return reviewed status=complete @63b7e8074b1982a703b58f30ffd22a2d92f43153 — spec compliant after review correction for required/typed numeric hit fields; engine and race suites green; integrated @733c827/@dc74312
+EV [waves] 2.2 return reviewed status=complete @2629a4f592e96edc587d53982af9ed40c2c97030 — official Responses `text.format` contract, strict config, completed-status, refusal, redirect, bounds, and timeout behavior accepted; local httptest only; integrated through @56734dd
+EV [waves] 2.3 return reviewed status=complete @528876fc81faf9b6d1b128c9b999a0e6c5b36ff1 — one-repair control flow and complete two-attempt diagnostics accepted; 46 suggest tests green in task worktree; integrated @3b300d0/@0ec79ec
+EV [waves] 2.4 return reviewed status=complete @77a7bf497392a94f37943256980ca4459fbc068b — strict load/hash/type/preflight/backup/atomic-replace behavior accepted after concurrent-edit correction; 54 suggest tests green in task worktree; integrated @050492a/@febcc87
+EV [wave-2-integration-red] `go vet ./...` exposed duplicate private `preflightCall` test helpers from disjoint Task 2.3/2.4 branches; production code unaffected
+EV [wave-2-integration-green] renamed the service-only test helper @f1e1fea; full integrated package now compiles
+EV [wave-2-refactor] controller read all Wave 2 production and test files, checked external-boundary fakes, failure injection, cancellation, hashes, and strict decoding; no further refactor required
+EV [wave-2-gate] `gofmt -l .` empty; `go vet ./...` green; `go test ./... -count=1` 283 tests pass in 4 packages; `go test -race ./... -count=1` 283 tests pass; `git diff --check 57c1705..HEAD` green
+WAVE transactional-ai-suggestions/2 status=complete — Tasks 2.1 through 2.4 reviewed, corrected, integrated, and fully gated
+USAGE [wave-2] models=gpt-5.6-sol,gpt-5.6-terra agents=4 tokens=unavailable cumulative=unavailable — for your limit %, run /usage
+next: dispatch Wave 3 Task 3.1 (transactional runtime and directory-based reload)
