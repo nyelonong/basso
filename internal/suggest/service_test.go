@@ -121,6 +121,54 @@ func TestService_InvalidRepairCreatesNoCandidate(t *testing.T) {
 	}
 }
 
+func TestService_RepairModelErrorIncludesFirstDiagnostic(t *testing.T) {
+	firstDiagnostic := errors.New("bar 3: invalid note")
+	repairFailure := errors.New("provider unavailable during repair")
+	model := &scriptedModel{responses: []scriptedResponse{
+		{proposal: Proposal{Summary: "bad note", Source: "first bad source"}},
+		{err: repairFailure},
+	}}
+	preflighter := &scriptedPreflighter{errs: []error{firstDiagnostic}}
+
+	candidate, err := NewService(model, preflighter).Suggest(context.Background(), validSuggestInput())
+	if err == nil {
+		t.Fatal("Suggest() error = nil, want repair model error")
+	}
+	if !strings.Contains(err.Error(), firstDiagnostic.Error()) || !strings.Contains(err.Error(), repairFailure.Error()) {
+		t.Errorf("Suggest() error = %q, want first diagnostic and repair model error", err)
+	}
+	if !reflect.DeepEqual(candidate, Candidate{}) {
+		t.Errorf("candidate = %#v, want zero candidate", candidate)
+	}
+	if len(model.requests) != 2 {
+		t.Errorf("model calls = %d, want 2", len(model.requests))
+	}
+}
+
+func TestService_InvalidRepairOutputIncludesFirstDiagnostic(t *testing.T) {
+	firstDiagnostic := errors.New("bar 3: invalid note")
+	const repairFailure = "proposal summary is empty"
+	model := &scriptedModel{responses: []scriptedResponse{
+		{proposal: Proposal{Summary: "bad note", Source: "first bad source"}},
+		{proposal: Proposal{Source: "second bad source"}},
+	}}
+	preflighter := &scriptedPreflighter{errs: []error{firstDiagnostic}}
+
+	candidate, err := NewService(model, preflighter).Suggest(context.Background(), validSuggestInput())
+	if err == nil {
+		t.Fatal("Suggest() error = nil, want repaired proposal validation error")
+	}
+	if !strings.Contains(err.Error(), firstDiagnostic.Error()) || !strings.Contains(err.Error(), repairFailure) {
+		t.Errorf("Suggest() error = %q, want first diagnostic and repaired proposal validation error", err)
+	}
+	if !reflect.DeepEqual(candidate, Candidate{}) {
+		t.Errorf("candidate = %#v, want zero candidate", candidate)
+	}
+	if len(model.requests) != 2 {
+		t.Errorf("model calls = %d, want 2", len(model.requests))
+	}
+}
+
 func TestService_PreflightsExactlyBarsZeroThroughFifteen(t *testing.T) {
 	model := &scriptedModel{responses: []scriptedResponse{{proposal: Proposal{Summary: "valid", Source: "candidate"}}}}
 	preflighter := &scriptedPreflighter{}

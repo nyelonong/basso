@@ -69,10 +69,16 @@ func (s *Service) Suggest(ctx context.Context, input SuggestInput) (Candidate, e
 	}
 	repaired, err := s.model.Propose(ctx, modelRequest(input, repairPrompt, proposal.Source))
 	if err != nil {
-		return Candidate{}, fmt.Errorf("request repaired proposal: %w", err)
+		return Candidate{}, errors.Join(
+			fmt.Errorf("first local preflight: %w", preflightErr),
+			fmt.Errorf("request repaired proposal: %w", err),
+		)
 	}
 	if err := validateProposal(repaired); err != nil {
-		return Candidate{}, fmt.Errorf("validate repaired proposal: %w", err)
+		return Candidate{}, errors.Join(
+			fmt.Errorf("first local preflight: %w", preflightErr),
+			fmt.Errorf("validate repaired proposal: %w", err),
+		)
 	}
 	if repairErr := s.preflighter.Preflight(ctx, repaired.Source, 0, 15); repairErr != nil {
 		return Candidate{}, errors.Join(
