@@ -39,8 +39,12 @@ func ResolveConfig(overrides Overrides, getenv func(string) string) (Config, err
 	if strings.TrimSpace(provider) == "" {
 		return Config{}, errors.New("ai: provider is required")
 	}
-	if strings.TrimSpace(model) == "" {
+	trimmedModel := strings.TrimSpace(model)
+	if trimmedModel == "" {
 		return Config{}, errors.New("ai: model is required")
+	}
+	if model != trimmedModel {
+		return Config{}, errors.New("ai: model must not contain surrounding whitespace")
 	}
 	if provider != "openai" && provider != "ollama" {
 		return Config{}, fmt.Errorf("ai: unsupported provider %q", provider)

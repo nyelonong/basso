@@ -97,7 +97,7 @@ func (client *OpenAIClient) Propose(
 	if err := decodeJSON(responseBody, &envelope, false); err != nil {
 		return suggest.Proposal{}, fmt.Errorf("openai: decode response: %w", err)
 	}
-	if envelope.Status != "" && envelope.Status != "completed" {
+	if envelope.Status != "completed" {
 		return suggest.Proposal{}, errors.New("openai: response is incomplete")
 	}
 

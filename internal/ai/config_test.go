@@ -52,6 +52,21 @@ func TestResolveConfig_RequiresProviderModelAndOpenAIKey(t *testing.T) {
 			overrides: Overrides{Provider: "ollama"},
 		},
 		{
+			name:      "model is whitespace only",
+			overrides: Overrides{Provider: "ollama", Model: " \t "},
+		},
+		{
+			name:      "flag model has surrounding whitespace",
+			overrides: Overrides{Provider: "ollama", Model: " model"},
+		},
+		{
+			name: "environment model has surrounding whitespace",
+			env: map[string]string{
+				"BASSO_AI_PROVIDER": "ollama",
+				"BASSO_AI_MODEL":    "model ",
+			},
+		},
+		{
 			name:      "unsupported provider",
 			overrides: Overrides{Provider: "other", Model: "model"},
 		},

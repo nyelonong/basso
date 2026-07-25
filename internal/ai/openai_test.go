@@ -148,6 +148,22 @@ func TestClients_RejectRefusalMalformedTruncatedAndOversizedResponses(t *testing
 			body:     `{"status":"incomplete","output":[]}`,
 		},
 		{
+			name:     "OpenAI missing status",
+			provider: "openai",
+			body: `{"output":[{
+				"type":"message","role":"assistant",
+				"content":[{"type":"output_text","text":"{\"summary\":\"change\",\"source\":\"pattern\"}"}]
+			}]}`,
+		},
+		{
+			name:     "OpenAI empty status",
+			provider: "openai",
+			body: `{"status":"","output":[{
+				"type":"message","role":"assistant",
+				"content":[{"type":"output_text","text":"{\"summary\":\"change\",\"source\":\"pattern\"}"}]
+			}]}`,
+		},
+		{
 			name:     "OpenAI malformed envelope",
 			provider: "openai",
 			body:     `{"status":`,
