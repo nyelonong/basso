@@ -109,3 +109,6 @@ EV [wave-4-gate] `gofmt -l .` empty; `go vet ./...` green; `go test -race ./... 
 WAVE transactional-ai-suggestions/4 status=complete — Task 4.1 reviewed, integrated, and fully gated
 USAGE [wave-4] model=gpt-5.6-sol agents=1 tokens=unavailable cumulative=unavailable — for your limit %, run /usage
 next: dispatch Wave 5 Tasks 5.1 (end-to-end workflow proof) and 5.2 (README and `.basso/` contract)
+DECISION [5.1-clock-seam] `engine.Engine`'s clock seam is package-private and Task 5.1 may only create `cmd/basso/ai_workflow_test.go`; preserve scope and avoid unsafe test hooks by using 400 BPM/1-step bars, channel observations, and bounded deadlines with the real engine clock
+**WIP** dispatched docs/briefs/5.1-brief.md @5e828227c1e83b16f0053d86b5a58ed5db6f6dac scope=cmd/basso/ai_workflow_test.go tier=top model=gpt-5.6-sol — next: review on return
+**WIP** dispatched docs/briefs/5.2-brief.md @5e828227c1e83b16f0053d86b5a58ed5db6f6dac scope=.gitignore,README.md tier=standard model=gpt-5.6-terra — next: review on return

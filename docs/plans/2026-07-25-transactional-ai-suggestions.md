@@ -106,8 +106,8 @@ independent test strategies.
 | 2.4 | 2 | complete | reviewed `77a7bf4`; integrated `050492a`/`febcc87` |
 | 3.1 | 3 | complete | reviewed `702e824`; integrated `7f1855e`/`983d50f` |
 | 4.1 | 4 | complete | reviewed `4804349`; integrated `63a59b1` |
-| 5.1 | 5 | pending | — |
-| 5.2 | 5 | pending | — |
+| 5.1 | 5 | in-progress | dispatched from `5e82822` |
+| 5.2 | 5 | in-progress | dispatched from `5e82822` |
 
 ```mermaid
 flowchart TD
