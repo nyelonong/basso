@@ -74,6 +74,8 @@ are durable local files:
 .basso/candidates/<candidate-id>.json
 ```
 
+The `.basso/` runtime state is gitignored; your `.fnl` patterns are not.
+
 Apply only the reviewed candidate:
 
 ```sh
