@@ -25,6 +25,31 @@ const (
 	evaluationTimeout     = 250 * time.Millisecond
 )
 
+const topLevelHelp = `Basso plays Fennel patterns and manages reviewable AI suggestions.
+
+Usage:
+  basso play <source.fnl>                        Play and hot-reload a pattern.
+  basso <source.fnl>                             Alias for basso play.
+  basso suggest [flags] <source.fnl> <prompt>    Create and review a candidate.
+  basso apply <candidate-id>                     Apply a validated candidate.
+  basso help                                     Show this help.
+  basso -h                                       Show this help.
+  basso --help                                   Show this help.
+
+Suggestion flags:
+  --provider <openai|ollama>  AI provider (required).
+  --model <name>              Provider model name (required).
+  --timeout <duration>        Provider request timeout (default 60s).
+  --sounds <path>             Sound inventory directory (default sound/808).
+
+Provider environment:
+  BASSO_AI_PROVIDER  Default AI provider.
+  BASSO_AI_MODEL     Default provider model.
+  BASSO_AI_TIMEOUT   Default provider request timeout.
+  OPENAI_API_KEY     API key required by the OpenAI provider.
+  BASSO_OLLAMA_URL   Ollama base URL (default http://127.0.0.1:11434).
+`
+
 type modelFactory func(ai.Config) (suggest.Model, error)
 
 type commandDependencies struct {
@@ -63,6 +88,8 @@ func runCommand(ctx context.Context, args []string, deps commandDependencies) er
 	deps = withCommandDefaults(deps)
 	if len(args) > 0 {
 		switch args[0] {
+		case "help", "-h", "--help":
+			return writeTopLevelHelp(deps.stdout)
 		case "suggest":
 			return runSuggestCommand(ctx, args[1:], deps)
 		case "apply":
@@ -70,6 +97,13 @@ func runCommand(ctx context.Context, args []string, deps commandDependencies) er
 		}
 	}
 	return run(ctx, args, deps.stdout, deps.newProvider, deps.newSink)
+}
+
+func writeTopLevelHelp(stdout io.Writer) error {
+	if _, err := io.WriteString(stdout, topLevelHelp); err != nil {
+		return fmt.Errorf("write top-level help: %w", err)
+	}
+	return nil
 }
 
 func withCommandDefaults(deps commandDependencies) commandDependencies {

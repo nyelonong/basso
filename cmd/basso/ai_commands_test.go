@@ -41,6 +41,113 @@ func (preflighter *fakeCommandPreflighter) Preflight(context.Context, string, in
 	return preflighter.err
 }
 
+func TestHelpCommand_ListsAllCommandsAndConfiguration(t *testing.T) {
+	const want = `Basso plays Fennel patterns and manages reviewable AI suggestions.
+
+Usage:
+  basso play <source.fnl>                        Play and hot-reload a pattern.
+  basso <source.fnl>                             Alias for basso play.
+  basso suggest [flags] <source.fnl> <prompt>    Create and review a candidate.
+  basso apply <candidate-id>                     Apply a validated candidate.
+  basso help                                     Show this help.
+  basso -h                                       Show this help.
+  basso --help                                   Show this help.
+
+Suggestion flags:
+  --provider <openai|ollama>  AI provider (required).
+  --model <name>              Provider model name (required).
+  --timeout <duration>        Provider request timeout (default 60s).
+  --sounds <path>             Sound inventory directory (default sound/808).
+
+Provider environment:
+  BASSO_AI_PROVIDER  Default AI provider.
+  BASSO_AI_MODEL     Default provider model.
+  BASSO_AI_TIMEOUT   Default provider request timeout.
+  OPENAI_API_KEY     API key required by the OpenAI provider.
+  BASSO_OLLAMA_URL   Ollama base URL (default http://127.0.0.1:11434).
+`
+	var stdout bytes.Buffer
+	deps := testCommandDependencies(t.TempDir(), &stdout, io.Discard)
+
+	if err := runCommand(context.Background(), []string{"help"}, deps); err != nil {
+		t.Fatalf("runCommand(help) error = %v", err)
+	}
+	if got := stdout.String(); got != want {
+		t.Errorf("help output mismatch\n got: %q\nwant: %q", got, want)
+	}
+}
+
+func TestHelpCommand_AliasesMatch(t *testing.T) {
+	aliases := [][]string{{"help"}, {"-h"}, {"--help"}}
+	outputs := make([]string, 0, len(aliases))
+	for _, args := range aliases {
+		var stdout bytes.Buffer
+		deps := testCommandDependencies(t.TempDir(), &stdout, io.Discard)
+
+		if err := runCommand(context.Background(), args, deps); err != nil {
+			t.Fatalf("runCommand(%q) error = %v", args, err)
+		}
+		outputs = append(outputs, stdout.String())
+	}
+
+	for index := 1; index < len(outputs); index++ {
+		if outputs[index] != outputs[0] {
+			t.Errorf("help output for %q differs from help output", aliases[index])
+		}
+	}
+}
+
+func TestHelpCommand_HasNoSideEffects(t *testing.T) {
+	dir := t.TempDir()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	var operationalCalls []string
+	unexpected := func(name string) error {
+		operationalCalls = append(operationalCalls, name)
+		return fmt.Errorf("unexpected %s call", name)
+	}
+	deps := commandDependencies{
+		stdout:        &stdout,
+		stderr:        &stderr,
+		invocationDir: dir,
+		storeRoot:     filepath.Join(dir, ".basso"),
+		getenv: func(string) string {
+			_ = unexpected("environment")
+			return ""
+		},
+		now: func() time.Time {
+			_ = unexpected("clock")
+			return commandTestNow
+		},
+		newModel: func(ai.Config) (suggest.Model, error) {
+			return nil, unexpected("model")
+		},
+		newPreflighter: func(string) (suggest.Preflighter, error) {
+			return nil, unexpected("preflight")
+		},
+		newProvider: func(string) (closablePatternProvider, error) {
+			return nil, unexpected("playback provider")
+		},
+		newSink: func() engine.AudioSink {
+			_ = unexpected("audio")
+			return nil
+		},
+	}
+
+	if err := runCommand(context.Background(), []string{"help"}, deps); err != nil {
+		t.Fatalf("runCommand(help) error = %v", err)
+	}
+	if len(operationalCalls) != 0 {
+		t.Errorf("operational calls = %v, want none", operationalCalls)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr = %q, want empty", stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".basso")); !os.IsNotExist(err) {
+		t.Errorf(".basso stat error = %v, want not exist", err)
+	}
+}
+
 func TestSuggestCommand_ValidatesConfigurationBeforeSourceRead(t *testing.T) {
 	dir := t.TempDir()
 	var stderr bytes.Buffer
