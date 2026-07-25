@@ -5,6 +5,7 @@ go 1.26.5
 require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/gopxl/beep/v2 v2.1.1
+	github.com/pmezard/go-difflib v1.0.0
 	github.com/yuin/gopher-lua v1.1.2
 )
 

@@ -152,3 +152,38 @@ func TestRun_InvalidInitialSourceDoesNotConstructSink(t *testing.T) {
 		t.Fatal("audio sink was constructed for invalid initial source")
 	}
 }
+
+func TestDispatch_PreservesPlayAndBareAlias(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "play", args: []string{"play", "pattern.fnl"}},
+		{name: "bare alias", args: []string{"pattern.fnl"}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			stopErr := errors.New("stop playback")
+			var gotPath string
+			deps := commandDependencies{
+				stdout: io.Discard,
+				stderr: io.Discard,
+				newProvider: func(path string) (closablePatternProvider, error) {
+					gotPath = path
+					return &stubProvider{err: stopErr}, nil
+				},
+				newSink: newFakeSink,
+			}
+
+			err := runCommand(context.Background(), test.args, deps)
+
+			if !errors.Is(err, stopErr) {
+				t.Fatalf("runCommand() error = %v, want %v", err, stopErr)
+			}
+			if gotPath != "pattern.fnl" {
+				t.Errorf("provider path = %q, want pattern.fnl", gotPath)
+			}
+		})
+	}
+}

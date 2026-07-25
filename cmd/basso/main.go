@@ -141,7 +141,11 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := run(ctx, os.Args[1:], os.Stdout, newFennelProvider, newBeepSink); err != nil {
+	deps, err := defaultCommandDependencies(os.Stdout, os.Stderr)
+	if err == nil {
+		err = runCommand(ctx, os.Args[1:], deps)
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "basso:", err)
 		os.Exit(1)
 	}
