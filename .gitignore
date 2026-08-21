@@ -1,3 +1,4 @@
 docs/briefs/
 bin/
 .basso/
+.env
