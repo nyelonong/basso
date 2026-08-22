@@ -691,22 +691,21 @@ func parseStudioFlags(args []string) (studioFlags, error) {
 // runStudioCommand plays the source exactly like play, feeding the cockpit
 // from the observer seam; quitting the UI stops playback.
 func runStudioCommand(ctx context.Context, args []string, deps commandDependencies) error {
-	path, err := resolveFile(args)
-	if err != nil {
-		return err
-	}
-
-	playbackCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	flags, err := parseStudioFlags(args)
 	if err != nil {
 		return err
+	}
+	path, err := absoluteFrom(deps.invocationDir, flags.source)
+	if err != nil {
+		return fmt.Errorf("resolve source path: %w", err)
 	}
 	soundsPath, err := absoluteFrom(deps.invocationDir, flags.sounds)
 	if err != nil {
 		return fmt.Errorf("resolve sounds path: %w", err)
 	}
+
+	playbackCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	model := newStudioModel(filepath.Base(flags.source))
 	model.sourcePath = path
