@@ -797,7 +797,7 @@ func runSuggestRequest(
 		SoundsPath:  soundsPath,
 		Source:      source,
 		Samples:     sortedSamples(inventory),
-		Instruments: []string{"bass", "brass", "pluck"},
+		Instruments: suggestionInstrumentCatalog(),
 	})
 	if err != nil {
 		return fail(err)

@@ -25,7 +25,7 @@ type SuggestInput struct {
 	SoundsPath  string
 	Source      []byte
 	Samples     []string
-	Instruments []string
+	Instruments []Instrument
 }
 
 // Service generates locally preflighted, unsaved candidates.
@@ -127,8 +127,8 @@ func validateSuggestInput(input SuggestInput) error {
 	if len(input.Samples) == 0 {
 		return errors.New("suggest sample inventory is empty")
 	}
-	if len(input.Instruments) == 0 {
-		return errors.New("suggest instrument inventory is empty")
+	if err := validateInstruments(input.Instruments); err != nil {
+		return err
 	}
 	return nil
 }
@@ -157,7 +157,7 @@ func modelRequest(input SuggestInput, prompt, source string) ModelRequest {
 		Prompt:      prompt,
 		Source:      source,
 		Samples:     append([]string(nil), input.Samples...),
-		Instruments: append([]string(nil), input.Instruments...),
+		Instruments: append([]Instrument(nil), input.Instruments...),
 	}
 }
 

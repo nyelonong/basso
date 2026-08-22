@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -482,6 +483,9 @@ func TestStudioModel_InitialPromptSubmitsAutomatically(t *testing.T) {
 	}
 	if len(requests) != 1 || requests[0].Prompt != "create a dangdut beat" {
 		t.Fatalf("model requests = %+v, want one original prompt", requests)
+	}
+	if got, want := instrumentNames(requests[0].Instruments), []string{"bass", "brass", "lead", "pad", "pluck"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("studio model instrument names = %v, want %v", got, want)
 	}
 }
 

@@ -224,7 +224,10 @@ func TestService_RejectsInputBoundsBeforeModel(t *testing.T) {
 		{name: "oversized prompt", mutate: func(input *SuggestInput) { input.Prompt = strings.Repeat("p", 16*1024+1) }},
 		{name: "oversized source", mutate: func(input *SuggestInput) { input.Source = []byte(strings.Repeat("s", 256*1024+1)) }},
 		{name: "empty samples", mutate: func(input *SuggestInput) { input.Samples = []string{} }},
-		{name: "empty instruments", mutate: func(input *SuggestInput) { input.Instruments = []string{} }},
+		{name: "empty instruments", mutate: func(input *SuggestInput) { input.Instruments = []Instrument{} }},
+		{name: "empty instrument name", mutate: func(input *SuggestInput) { input.Instruments[0].Name = "" }},
+		{name: "empty instrument description", mutate: func(input *SuggestInput) { input.Instruments[0].Description = "" }},
+		{name: "empty instrument range", mutate: func(input *SuggestInput) { input.Instruments[0].RecommendedRange = "" }},
 	}
 
 	for _, test := range tests {
@@ -282,12 +285,12 @@ func TestService_DoesNotMutateSource(t *testing.T) {
 	input := validSuggestInput()
 	wantSource := append([]byte(nil), input.Source...)
 	wantSamples := append([]string(nil), input.Samples...)
-	wantInstruments := append([]string(nil), input.Instruments...)
+	wantInstruments := append([]Instrument(nil), input.Instruments...)
 	model := &scriptedModel{
 		responses: []scriptedResponse{{proposal: Proposal{Summary: "valid", Source: "candidate"}}},
 		mutate: func(request *ModelRequest) {
 			request.Samples[0] = "mutated.wav"
-			request.Instruments[0] = "mutated"
+			request.Instruments[0].Name = "mutated"
 		},
 	}
 
@@ -386,13 +389,17 @@ func (p *scriptedPreflighter) Preflight(_ context.Context, source string, firstB
 
 func validSuggestInput() SuggestInput {
 	return SuggestInput{
-		Provider:    "openai",
-		Model:       "gpt-test",
-		Prompt:      "Make the hats denser.",
-		SourcePath:  "/patterns/base.fnl",
-		SoundsPath:  "/sounds/808",
-		Source:      []byte("(bpm 120)\n(steps 16)\n"),
-		Samples:     []string{"kick.wav", "hat.wav"},
-		Instruments: []string{"bass", "brass", "pluck"},
+		Provider:   "openai",
+		Model:      "gpt-test",
+		Prompt:     "Make the hats denser.",
+		SourcePath: "/patterns/base.fnl",
+		SoundsPath: "/sounds/808",
+		Source:     []byte("(bpm 120)\n(steps 16)\n"),
+		Samples:    []string{"kick.wav", "hat.wav"},
+		Instruments: []Instrument{
+			{Name: "bass", Description: "low voice", RecommendedRange: "C1-C3"},
+			{Name: "brass", Description: "bright voice", RecommendedRange: "C2-C5"},
+			{Name: "pluck", Description: "string voice", RecommendedRange: "C2-C6"},
+		},
 	}
 }

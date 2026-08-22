@@ -251,7 +251,7 @@ func runSuggestCommand(ctx context.Context, args []string, deps commandDependenc
 		SoundsPath:  soundsPath,
 		Source:      source,
 		Samples:     sortedSamples(inventory),
-		Instruments: []string{"bass", "brass", "pluck"},
+		Instruments: suggestionInstrumentCatalog(),
 	})
 	if err != nil {
 		return err
@@ -363,6 +363,20 @@ func sortedSamples(inventory engine.SoundInventory) []string {
 	}
 	sort.Strings(samples)
 	return samples
+}
+
+func suggestionInstrumentCatalog() []suggest.Instrument {
+	catalog := engine.InstrumentCatalog()
+	instruments := make([]suggest.Instrument, 0, len(catalog))
+	for _, instrument := range catalog {
+		instruments = append(instruments, suggest.Instrument{
+			Name:             instrument.Name,
+			Description:      instrument.Description,
+			RecommendedRange: instrument.RecommendedRange,
+			Limits:           instrument.Limits,
+		})
+	}
+	return instruments
 }
 
 func newConcreteModel(config ai.Config) (suggest.Model, error) {

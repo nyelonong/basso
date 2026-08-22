@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -24,10 +25,12 @@ type fakeCommandModel struct {
 	proposal suggest.Proposal
 	err      error
 	calls    int
+	requests []suggest.ModelRequest
 }
 
-func (model *fakeCommandModel) Propose(context.Context, suggest.ModelRequest) (suggest.Proposal, error) {
+func (model *fakeCommandModel) Propose(_ context.Context, request suggest.ModelRequest) (suggest.Proposal, error) {
 	model.calls++
+	model.requests = append(model.requests, request)
 	return model.proposal, model.err
 }
 
@@ -235,6 +238,41 @@ func TestSuggestCommand_NeverStartsAudio(t *testing.T) {
 	if sinkConstructions != 0 {
 		t.Errorf("audio sink constructions = %d, want 0", sinkConstructions)
 	}
+}
+
+func TestSuggestCommand_UsesEngineInstrumentCatalog(t *testing.T) {
+	dir, sourcePath, _ := newCommandFixture(t)
+	model := &fakeCommandModel{
+		proposal: suggest.Proposal{Summary: "kept the groove", Source: "(candidate)\n"},
+	}
+	deps := testCommandDependencies(dir, io.Discard, io.Discard)
+	deps.newModel = func(ai.Config) (suggest.Model, error) { return model, nil }
+
+	if err := runCommand(context.Background(), suggestArgs(sourcePath), deps); err != nil {
+		t.Fatalf("runCommand() error = %v", err)
+	}
+	if len(model.requests) != 1 {
+		t.Fatalf("model request count = %d, want 1", len(model.requests))
+	}
+	if got, want := instrumentNames(model.requests[0].Instruments), []string{"bass", "brass", "lead", "pad", "pluck"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("model instrument names = %v, want %v", got, want)
+	}
+	for _, instrument := range model.requests[0].Instruments {
+		if instrument.Description == "" || instrument.RecommendedRange == "" {
+			t.Errorf("model instrument = %+v, want description and range", instrument)
+		}
+		if (instrument.Name == "lead" || instrument.Name == "pad") && instrument.Limits == "" {
+			t.Errorf("model instrument = %+v, want palette limits", instrument)
+		}
+	}
+}
+
+func instrumentNames(instruments []suggest.Instrument) []string {
+	names := make([]string, 0, len(instruments))
+	for _, instrument := range instruments {
+		names = append(names, instrument.Name)
+	}
+	return names
 }
 
 func TestSuggestCommand_SavesCandidateAndPrintsUnifiedDiff(t *testing.T) {

@@ -419,10 +419,12 @@ func TestClients_RespectContextAndTimeout(t *testing.T) {
 
 func testModelRequest() suggest.ModelRequest {
 	return suggest.ModelRequest{
-		Prompt:      "Make the hats denser.",
-		Source:      "pattern",
-		Samples:     []string{"kick.wav", "hat.wav"},
-		Instruments: []string{"bass"},
+		Prompt:  "Make the hats denser.",
+		Source:  "pattern",
+		Samples: []string{"kick.wav", "hat.wav"},
+		Instruments: []suggest.Instrument{{
+			Name: "bass", Description: "low voice", RecommendedRange: "C1-C3",
+		}},
 	}
 }
 

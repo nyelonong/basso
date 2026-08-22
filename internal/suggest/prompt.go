@@ -22,12 +22,16 @@ func RenderPrompt(request ModelRequest) (string, error) {
 	if len(request.Samples) == 0 {
 		return "", errors.New("suggest: sample inventory is empty")
 	}
-	if len(request.Instruments) == 0 {
-		return "", errors.New("suggest: instrument inventory is empty")
+	if err := validateInstruments(request.Instruments); err != nil {
+		return "", err
 	}
 
 	samples := append([]string(nil), request.Samples...)
 	sort.Strings(samples)
+	instruments := append([]Instrument(nil), request.Instruments...)
+	sort.Slice(instruments, func(i, j int) bool {
+		return instruments[i].Name < instruments[j].Name
+	})
 
 	var prompt strings.Builder
 	prompt.WriteString(promptTemplate)
@@ -41,7 +45,7 @@ func RenderPrompt(request ModelRequest) (string, error) {
 	writeInventory(&prompt, samples)
 	prompt.WriteString("</samples>\n\n")
 	prompt.WriteString("## Available instruments\n<instruments>\n")
-	writeInventory(&prompt, request.Instruments)
+	writeInstrumentInventory(&prompt, instruments)
 	prompt.WriteString("</instruments>\n")
 
 	return prompt.String(), nil
@@ -51,6 +55,22 @@ func writeInventory(prompt *strings.Builder, inventory []string) {
 	for _, item := range inventory {
 		prompt.WriteString("- ")
 		prompt.WriteString(item)
+		prompt.WriteByte('\n')
+	}
+}
+
+func writeInstrumentInventory(prompt *strings.Builder, instruments []Instrument) {
+	for _, instrument := range instruments {
+		prompt.WriteString("- ")
+		prompt.WriteString(instrument.Name)
+		prompt.WriteString(": ")
+		prompt.WriteString(instrument.Description)
+		prompt.WriteString("; recommended range ")
+		prompt.WriteString(instrument.RecommendedRange)
+		if instrument.Limits != "" {
+			prompt.WriteString("; limits: ")
+			prompt.WriteString(instrument.Limits)
+		}
 		prompt.WriteByte('\n')
 	}
 }
