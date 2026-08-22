@@ -115,36 +115,5 @@ func NewEngine(sink AudioSink) *Engine {
 func (e *Engine) Run(ctx context.Context, provider PatternProvider) error {
 	e.sink.Start()
 	defer e.sink.Teardown()
-
-	reference := e.clock.Now()
-	var barStart time.Duration
-	for bar := 0; ; bar++ {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		hits, bpm, stepsPerBar, err := provider.Next(bar)
-		if err != nil {
-			return err
-		}
-
-		stepDuration := time.Minute / time.Duration(bpm*4)
-		for _, h := range hits {
-			begin := barStart + time.Duration(h.Step)*stepDuration
-			if h.Note != "" {
-				sustain := time.Duration(h.Length) * stepDuration
-				e.sink.SetFireNote(h.Note, h.Instrument, begin, sustain, h.Velocity, h.Pan)
-			} else {
-				e.sink.SetFire(h.Sample, begin, 0, h.Velocity, h.Pan)
-			}
-		}
-
-		barStart += time.Duration(stepsPerBar) * stepDuration
-
-		if err := e.clock.WaitUntil(ctx, reference.Add(barStart)); err != nil {
-			return err
-		}
-	}
+	return e.Stream(ctx, provider)
 }

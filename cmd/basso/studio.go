@@ -105,6 +105,8 @@ type studioModel struct {
 	events              []string
 
 	mode           studioMode
+	transport      studioTransportControl
+	transportState studioTransportState
 	prompt         textinput.Model
 	generation     int
 	pendingSuggest int
@@ -132,9 +134,10 @@ const maxStudioEvents = 8
 
 func newStudioModel(sourceName string) studioModel {
 	return studioModel{
-		sourceName: sourceName,
-		startedAt:  time.Now(),
-		spinner:    spinner.New(spinner.WithSpinner(spinner.Meter)),
+		sourceName:     sourceName,
+		transportState: transportPlaying,
+		startedAt:      time.Now(),
+		spinner:        spinner.New(spinner.WithSpinner(spinner.Meter)),
 	}
 }
 
@@ -156,6 +159,27 @@ func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case " ":
+			if m.mode == studioPrompting {
+				break
+			}
+			if m.transport != nil {
+				m.transportState = m.transport.TogglePause()
+			}
+		case "x":
+			if m.mode == studioPrompting {
+				break
+			}
+			if m.transport != nil {
+				m.transportState = m.transport.Stop()
+			}
+		case "p":
+			if m.mode == studioPrompting {
+				break
+			}
+			if m.transport != nil {
+				m.transportState = m.transport.Play()
+			}
 		case "s":
 			if m.mode != studioIdle {
 				break
@@ -329,6 +353,7 @@ func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m studioModel) View() string {
 	var out strings.Builder
 	out.WriteString("basso studio — " + m.sourceName + "\n")
+	out.WriteString("transport " + m.transportState.String() + "\n")
 	if !m.played {
 		out.WriteString("waiting for first bar…\n")
 	} else {
@@ -368,7 +393,7 @@ func (m studioModel) View() string {
 			out.WriteString("\n" + m.renderDiffView())
 		}
 	}
-	out.WriteString("\nq quit · s suggest · a apply · r reject\n")
+	out.WriteString("\nspace pause/resume · p play · x stop · s suggest · a apply · r reject · q quit\n")
 	return out.String()
 }
 
@@ -726,8 +751,34 @@ func runStudioCommand(ctx context.Context, args []string, deps commandDependenci
 		return fmt.Errorf("resolve sounds path: %w", err)
 	}
 
-	playbackCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	sessionCtx, cancel := context.WithCancel(ctx)
+	messages := make(chan tea.Msg, 64)
+	send := func(message tea.Msg) {
+		select {
+		case messages <- message:
+		case <-sessionCtx.Done():
+		}
+	}
+	observers := playbackObservers{
+		onBar: func(bar, bpm, stepsPerBar int, hits []engine.Hit) {
+			send(barMsg{bar: bar, bpm: bpm, stepsPerBar: stepsPerBar, hits: hits})
+		},
+		onDiagnostic: func(diagnostic engine.Diagnostic) {
+			send(diagnosticMsg{diagnostic: diagnostic})
+		},
+	}
+	transport, err := newStudioTransport(
+		sessionCtx,
+		path,
+		observers,
+		deps.newProvider,
+		deps.newSink,
+		func(err error) { send(playbackDoneMsg{err: err}) },
+	)
+	if err != nil {
+		cancel()
+		return err
+	}
 
 	model := newStudioModel(filepath.Base(flags.source))
 	model.sourcePath = path
@@ -737,28 +788,28 @@ func runStudioCommand(ctx context.Context, args []string, deps commandDependenci
 		Model:    flags.model,
 		Timeout:  flags.timeout,
 	}, soundsPath)
+	model.transport = transport
+	model.transportState = transportPlaying
 	program := deps.newStudioProgram(model, tea.WithAltScreen())
 
-	observers := playbackObservers{
-		onBar: func(bar, bpm, stepsPerBar int, hits []engine.Hit) {
-			program.Send(barMsg{bar: bar, bpm: bpm, stepsPerBar: stepsPerBar, hits: hits})
-		},
-		onDiagnostic: func(diagnostic engine.Diagnostic) {
-			program.Send(diagnosticMsg{diagnostic: diagnostic})
-		},
-	}
-	done := make(chan error, 1)
+	forwardDone := make(chan struct{})
 	go func() {
-		done <- playSource(playbackCtx, path, observers, deps.newProvider, deps.newSink)
+		defer close(forwardDone)
+		for {
+			select {
+			case <-sessionCtx.Done():
+				return
+			case message := <-messages:
+				program.Send(message)
+			}
+		}
 	}()
-
-	if _, err := program.Run(); err != nil {
-		cancel()
-		<-done
-		return err
-	}
+	transport.Start()
+	_, programErr := program.Run()
 	cancel()
-	return <-done
+	transportErr := transport.Close()
+	<-forwardDone
+	return errors.Join(programErr, transportErr)
 }
 
 // compactDiagnostic strips fennel/engine stack-trace frames from failure
