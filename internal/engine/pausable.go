@@ -18,12 +18,13 @@ import (
 type PausableClock struct {
 	now func() time.Time
 
-	mu         sync.Mutex
-	pending    bool          // pause requested, applied at next WaitUntil
-	active     bool          // virtual time currently frozen
-	pauseStart time.Time     // real instant the freeze began
-	frozen     time.Duration // completed freeze time
-	wake       chan struct{} // closed on resume, then replaced
+	mu           sync.Mutex
+	pending      bool // pause requested, applied at next WaitUntil
+	active       bool // virtual time currently frozen
+	pauseStart   time.Time
+	frozen       time.Duration
+	pauseReached chan struct{}
+	wake         chan struct{}
 }
 
 // NewPausableClock returns a PausableClock pacing off the real wall clock.
@@ -35,14 +36,24 @@ func newPausableClock(now func() time.Time) *PausableClock {
 	return &PausableClock{now: now, wake: make(chan struct{})}
 }
 
-// Pause requests a freeze. The current bar finishes sounding; virtual time
-// freezes when the engine next reaches its bar boundary.
-func (c *PausableClock) Pause() {
+// Pause requests a freeze at the next bar boundary.
+func (c *PausableClock) Pause() { c.PauseAtBoundary() }
+
+// PauseAtBoundary returns a signal closed when the freeze takes effect.
+func (c *PausableClock) PauseAtBoundary() <-chan struct{} {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if !c.active {
-		c.pending = true
+	if c.active {
+		reached := make(chan struct{})
+		close(reached)
+		return reached
 	}
+	if c.pending {
+		return c.pauseReached
+	}
+	c.pending = true
+	c.pauseReached = make(chan struct{})
+	return c.pauseReached
 }
 
 // Resume unfreezes virtual time. Resuming with no pause in effect (including
@@ -52,6 +63,10 @@ func (c *PausableClock) Resume() {
 	defer c.mu.Unlock()
 	if c.pending && !c.active {
 		c.pending = false
+		if c.pauseReached != nil {
+			close(c.pauseReached)
+			c.pauseReached = nil
+		}
 		return
 	}
 	if !c.active {
@@ -59,6 +74,7 @@ func (c *PausableClock) Resume() {
 	}
 	c.frozen += c.now().Sub(c.pauseStart)
 	c.active = false
+	c.pauseReached = nil
 	c.closeWakeLocked()
 }
 
@@ -107,6 +123,9 @@ func (c *PausableClock) WaitUntil(ctx context.Context, t time.Time) error {
 		c.pending = false
 		c.active = true
 		c.pauseStart = c.now()
+		if c.pauseReached != nil {
+			close(c.pauseReached)
+		}
 	}
 	active, wake := c.active, c.wake
 	c.mu.Unlock()

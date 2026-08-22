@@ -658,6 +658,25 @@ func TestStudioModel_CandidateArrivalArmsStoredSource(t *testing.T) {
 // TestStudioModel_CandidateRendersDiffAndStatus proves a returned candidate
 // shows its summary, validation badge, and a unified diff against the file,
 // and is persisted to the store on arrival.
+func TestStudioModel_ArmFailureCannotApply(t *testing.T) {
+	dir := t.TempDir()
+	control := &recordingTransport{state: transportPlaying, armErr: errors.New("open candidate")}
+	m, source := readyCandidateModelWithTransport(t, dir, control)
+	before, _ := os.ReadFile(source)
+
+	updated, command := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	if command != nil {
+		t.Fatal("unauditioned candidate produced an apply command")
+	}
+	final := updated.(studioModel)
+	if final.candidate == nil || !strings.Contains(final.View(), "candidate was not auditioned") {
+		t.Fatalf("candidate/view = %v/%q, want retained unauditioned state", final.candidate, final.View())
+	}
+	if after, _ := os.ReadFile(source); !bytes.Equal(before, after) {
+		t.Fatal("unauditioned apply attempt changed the real source")
+	}
+}
+
 func TestStudioModel_CandidateRendersDiffAndStatus(t *testing.T) {
 	dir := t.TempDir()
 	m, _ := readyCandidateModel(t, dir)

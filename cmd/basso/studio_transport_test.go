@@ -86,10 +86,15 @@ func TestStudioTransport_KeysAndStatus(t *testing.T) {
 
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeySpace})
 	model = updated.(studioModel)
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	updated, stopCommand := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	model = updated.(studioModel)
+	if model.transportState != transportStopping || stopCommand == nil {
+		t.Fatalf("x state/command = %s/%v, want stopping/non-nil", model.transportState, stopCommand)
+	}
+	updated, _ = model.Update(stopCommand())
 	model = updated.(studioModel)
 	if model.transportState != transportStopped {
-		t.Fatalf("x state = %s, want stopped", model.transportState)
+		t.Fatalf("stop completion state = %s, want stopped", model.transportState)
 	}
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
 	model = updated.(studioModel)
@@ -213,7 +218,11 @@ func TestStudioTransport_PauseContinuesAndStopResetsWithoutDeviceRestart(t *test
 		t.Fatalf("resumed bar = %d, want 1", bar)
 	}
 
+	stopStarted := time.Now()
 	transport.Stop()
+	if elapsed := time.Since(stopStarted); elapsed < 25*time.Millisecond {
+		t.Fatalf("Stop returned after %v, want current bar boundary first", elapsed)
+	}
 	transport.Play()
 	if bar := waitTransportBar(t, provider.bars); bar != 0 {
 		t.Fatalf("post-stop bar = %d, want 0", bar)

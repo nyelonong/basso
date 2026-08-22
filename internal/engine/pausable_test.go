@@ -73,6 +73,32 @@ func TestPausableClock_NowSubtractsFrozenTime(t *testing.T) {
 	}
 }
 
+func TestPausableClock_PauseAtBoundarySignalsOnlyAfterCurrentBar(t *testing.T) {
+	pace := NewPausableClock()
+	bar := 50 * time.Millisecond
+	reached := pace.PauseAtBoundary()
+	done := make(chan error, 1)
+	go func() { done <- pace.WaitUntil(context.Background(), pace.Now().Add(bar)) }()
+
+	select {
+	case <-reached:
+		t.Fatal("pause boundary signaled before current bar elapsed")
+	case <-time.After(20 * time.Millisecond):
+	}
+	select {
+	case <-reached:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("pause boundary was not signaled")
+	}
+	if !clockActive(pace) {
+		t.Fatal("clock is not active-paused after boundary signal")
+	}
+	pace.Resume()
+	if err := <-done; err != nil {
+		t.Fatalf("WaitUntil() error = %v", err)
+	}
+}
+
 func TestPausableClock_PauseHoldsAtEndOfCurrentBar(t *testing.T) {
 	pace := NewPausableClock()
 	bar := 50 * time.Millisecond

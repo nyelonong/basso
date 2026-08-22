@@ -13,6 +13,7 @@ type studioTransportState int
 const (
 	transportPlaying studioTransportState = iota
 	transportPaused
+	transportStopping
 	transportStopped
 )
 
@@ -20,6 +21,8 @@ func (state studioTransportState) String() string {
 	switch state {
 	case transportPaused:
 		return "paused"
+	case transportStopping:
+		return "stopping"
 	case transportStopped:
 		return "stopped"
 	default:
@@ -127,6 +130,7 @@ type studioTransport struct {
 	state        studioTransportState
 	streamCancel context.CancelFunc
 	streamDone   chan error
+	stopDone     chan struct{}
 	lastErr      error
 	releasing    bool
 	closed       bool
@@ -225,21 +229,44 @@ func (transport *studioTransport) Stop() studioTransportState {
 		transport.mu.Unlock()
 		return transportStopped
 	}
-	cancel, done := transport.streamCancel, transport.streamDone
-	transport.streamCancel, transport.streamDone = nil, nil
-	transport.state = transportStopped
+	if transport.state == transportStopping {
+		stopped := transport.stopDone
+		transport.mu.Unlock()
+		<-stopped
+		return transportStopped
+	}
+	boundary := transport.pace.PauseAtBoundary()
+	cancel, streamDone := transport.streamCancel, transport.streamDone
+	stopped := make(chan struct{})
+	transport.stopDone = stopped
+	transport.state = transportStopping
 	if transport.releasing {
 		transport.switcher.UseReal(true)
 	}
 	transport.mu.Unlock()
 
+	streamEnded := false
+	if streamDone != nil {
+		select {
+		case <-boundary:
+		case <-streamDone:
+			streamEnded = true
+		}
+	}
 	if cancel != nil {
 		cancel()
 	}
 	transport.pace.Resume()
-	if done != nil {
-		<-done
+	if streamDone != nil && !streamEnded {
+		<-streamDone
 	}
+
+	transport.mu.Lock()
+	transport.streamCancel, transport.streamDone = nil, nil
+	transport.state = transportStopped
+	close(stopped)
+	transport.stopDone = nil
+	transport.mu.Unlock()
 	return transportStopped
 }
 

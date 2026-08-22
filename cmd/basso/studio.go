@@ -36,6 +36,8 @@ type playbackDoneMsg struct {
 	err error
 }
 
+type transportStateMsg struct{ state studioTransportState }
+
 type suggestPromptMsg struct{}
 
 type suggestionReadyMsg struct {
@@ -118,6 +120,7 @@ type studioModel struct {
 	pendingSuggest int
 	candidate      *suggest.Candidate
 	candidateBusy  bool
+	candidateReady bool
 	diff           string
 	lastError      string
 	cancelSuggest  context.CancelFunc
@@ -181,8 +184,10 @@ func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.mode == studioPrompting {
 				break
 			}
-			if m.transport != nil {
-				m.transportState = m.transport.Stop()
+			if m.transport != nil && m.transportState != transportStopped && m.transportState != transportStopping {
+				transport := m.transport
+				m.transportState = transportStopping
+				return m, func() tea.Msg { return transportStateMsg{state: transport.Stop()} }
 			}
 		case "p":
 			if m.mode == studioPrompting {
@@ -230,7 +235,7 @@ func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.diffScroll += m.viewportLines()
 			}
 		case "a":
-			if m.candidate == nil || m.mode != studioIdle || m.store == nil || m.candidateBusy {
+			if m.candidate == nil || !m.candidateReady || m.mode != studioIdle || m.store == nil || m.candidateBusy {
 				break
 			}
 			id := m.candidate.Metadata.ID
@@ -336,6 +341,8 @@ func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.playbackErr = msg.err.Error()
 		}
 		return m, tea.Quit
+	case transportStateMsg:
+		m.transportState = msg.state
 	case suggestionReadyMsg:
 		if msg.generation == 0 || msg.generation != m.pendingSuggest {
 			return m, nil
@@ -344,6 +351,7 @@ func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.mode = studioIdle
 		m.lastError = ""
 		candidate := msg.candidate
+		candidateReady := m.transport == nil
 		if m.store != nil {
 			saved, err := m.store.Save(candidate)
 			if err != nil {
@@ -358,15 +366,19 @@ func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if err != nil {
 					m.events = append(m.events, "candidate audition failed: "+err.Error())
+				} else {
+					candidateReady = true
 				}
 			}
 		}
 		m.candidate = &candidate
+		m.candidateReady = candidateReady
 		m.diff = m.renderDiff()
 		m.diffScroll = 0
 	case candidateAppliedMsg:
 		m.candidate = nil
 		m.candidateBusy = false
+		m.candidateReady = false
 		m.diff = ""
 		m.lastError = ""
 		m.events = append(m.events, fmt.Sprintf("applied %s backup %s", shortID(msg.id), msg.backupPath))
@@ -376,6 +388,7 @@ func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case candidateRejectedMsg:
 		m.candidate = nil
 		m.candidateBusy = false
+		m.candidateReady = false
 		m.diff = ""
 		m.events = append(m.events, "candidate rejected")
 	case candidateRejectFailedMsg:
@@ -433,7 +446,11 @@ func (m studioModel) View() string {
 	if m.candidate != nil {
 		out.WriteString(fmt.Sprintf("candidate %s: %s [validation %s]\n",
 			shortID(m.candidate.Metadata.ID), m.candidate.Metadata.Summary, m.candidate.Metadata.Validation.Status))
-		out.WriteString("suggest disabled: accept or reject the current candidate\n")
+		if m.candidateReady {
+			out.WriteString("suggest disabled: accept or reject the current candidate\n")
+		} else {
+			out.WriteString("candidate was not auditioned: reject it and try again\n")
+		}
 		if m.diff != "" {
 			out.WriteString("\n" + m.renderDiffView())
 		}
@@ -922,8 +939,8 @@ func runStudioSession(ctx context.Context, flags studioFlags, deps commandDepend
 	}()
 	transport.Start()
 	finalModel, programErr := program.Run()
-	cancel()
 	transport.Stop()
+	cancel()
 	var cleanupErr error
 	if studio, ok := finalModel.(studioModel); ok && studio.candidate != nil {
 		cleanupErr = cleanupStudioCandidate(transport, studio.store, studio.candidate.Metadata.ID)
