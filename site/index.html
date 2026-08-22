@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Basso | Save the pattern. Keep the beat.</title>
+    <meta
+      name="description"
+      content="Basso is a pure-Go live-coding player for Fennel patterns. Save a change and hear it at the next bar without restarting audio."
+    />
+    <meta name="theme-color" content="#dce2df" />
+    <link rel="canonical" href="https://basso.afrani.id/" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Basso" />
+    <meta property="og:title" content="Basso | Save the pattern. Keep the beat." />
+    <meta
+      property="og:description"
+      content="Live-code Fennel rhythms. Changes land at the next bar while the audio device stays open."
+    />
+    <meta property="og:url" content="https://basso.afrani.id/" />
+    <meta property="og:image" content="https://basso.afrani.id/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Basso sequencer steps with the line Save the pattern. Keep the beat." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-head">
+      <a class="brand" href="#top" aria-label="Basso home">
+        <span class="brand-name">basso</span>
+        <span class="brand-index">LIVE / 001</span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="#instrument">Play</a>
+        <a href="#install">Install</a>
+        <a href="https://github.com/nyelonong/basso">Source</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="top" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="hero-label">FENNEL PATTERNS / PURE GO / 808 SAMPLES</p>
+          <h1 id="hero-title">
+            Save the pattern.
+            <span>Keep the beat.</span>
+          </h1>
+          <p class="hero-lede">
+            Basso swaps live-coded grooves at the next bar without restarting audio.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#install">Install Basso</a>
+            <a class="button button-quiet" href="https://github.com/nyelonong/basso">Read the source</a>
+          </div>
+        </div>
+
+        <section
+          class="instrument"
+          id="instrument"
+          aria-label="One-bar 808 sequencer"
+          aria-describedby="instrument-note"
+        >
+          <div class="instrument-head">
+            <div>
+              <span class="instrument-kicker">ONE BAR</span>
+              <strong>INDO BOUNCE</strong>
+            </div>
+            <div class="tempo" aria-label="150 beats per minute">
+              <span>150</span>
+              <small>BPM</small>
+            </div>
+          </div>
+
+          <div class="transport">
+            <button class="transport-button" id="transport" type="button">
+              <span class="transport-mark" aria-hidden="true"></span>
+              <span data-transport-label>Play bar</span>
+            </button>
+            <div class="bar-readout" aria-label="Current playback position">
+              <span>BAR</span>
+              <strong data-bar>01</strong>
+              <span>STEP</span>
+              <strong data-step>01</strong>
+            </div>
+          </div>
+
+          <div class="sequencer" data-sequencer>
+            <div class="track" data-track="kick">
+              <div class="track-label"><strong>KICK</strong><span>K2</span></div>
+              <div class="step-grid" data-steps></div>
+            </div>
+            <div class="track" data-track="snare">
+              <div class="track-label"><strong>SNARE</strong><span>S1</span></div>
+              <div class="step-grid" data-steps></div>
+            </div>
+            <div class="track" data-track="hat">
+              <div class="track-label"><strong>HAT</strong><span>CH</span></div>
+              <div class="step-grid" data-steps></div>
+            </div>
+            <div class="track" data-track="clap">
+              <div class="track-label"><strong>CLAP</strong><span>CP</span></div>
+              <div class="step-grid" data-steps></div>
+            </div>
+          </div>
+
+          <div class="instrument-foot">
+            <p class="machine-status" data-status aria-live="polite">READY / EDITS APPLY NOW</p>
+            <p id="instrument-note">Click steps, then play. Edits made in motion wait for the next bar.</p>
+          </div>
+          <noscript>The sequencer needs JavaScript. Basso itself does not.</noscript>
+        </section>
+      </section>
+
+      <section class="bar-story" aria-labelledby="boundary-title">
+        <div class="section-title">
+          <h2 id="boundary-title">A save waits for the one.</h2>
+          <p>
+            Write whenever the idea arrives. Basso keeps the current groove intact until the bar completes.
+          </p>
+        </div>
+
+        <ol class="boundary-flow">
+          <li>
+            <span class="flow-number">1</span>
+            <div>
+              <h3>Start a file</h3>
+              <code>basso play patterns/indo-bounce.fnl</code>
+            </div>
+          </li>
+          <li>
+            <span class="flow-number">2</span>
+            <div>
+              <h3>Edit while it runs</h3>
+              <p>The current pattern keeps playing while the saved Fennel is evaluated and validated.</p>
+            </div>
+          </li>
+          <li>
+            <span class="flow-number">3</span>
+            <div>
+              <h3>Cross the boundary</h3>
+              <p>The next call to <code>pattern(bar)</code> swaps the groove. The audio device never closes.</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="pattern-proof" aria-labelledby="pattern-title">
+        <div class="pattern-copy">
+          <h2 id="pattern-title">The groove is the source file.</h2>
+          <p>
+            Sixteen steps, plain data, no hidden timeline. A pattern is a Fennel function you can read, version, and change with any editor.
+          </p>
+          <a class="text-link" href="https://github.com/nyelonong/basso/blob/master/patterns/indo-bounce.fnl">Open the complete pattern</a>
+        </div>
+
+        <figure class="code-sheet">
+          <figcaption>
+            <span>patterns/indo-bounce.fnl</span>
+            <span>EXCERPT</span>
+          </figcaption>
+          <pre><code><span class="code-dim">(bpm 150)
+(steps 16)</span>
+
+(fn pattern [bar]
+  [<span class="code-comment">; the 3 + 3 + 2 bounce</span>
+   {:step 0  :sample <span class="code-string">"kick2.wav"</span>}
+   {:step 3  :sample <span class="code-string">"kick2.wav"</span>}
+   {:step 6  :sample <span class="code-string">"kick2.wav"</span>}
+   {:step 8  :sample <span class="code-string">"kick2.wav"</span>}
+   {:step 11 :sample <span class="code-string">"kick2.wav"</span>}
+   {:step 14 :sample <span class="code-string">"kick2.wav"</span>}])</code></pre>
+        </figure>
+      </section>
+
+      <section class="studio" aria-labelledby="studio-title">
+        <div class="studio-word" aria-hidden="true">studio</div>
+        <div class="studio-copy">
+          <h2 id="studio-title">Stay inside the loop.</h2>
+          <p>
+            Open the cockpit, audition a validated candidate at a bar boundary, then promote it or return to the real file.
+          </p>
+          <code class="studio-command">basso studio patterns/basic-groove.fnl</code>
+          <p class="studio-note">
+            A provider is called only when you submit a prompt. Playback remains local and every candidate is treated as untrusted.
+          </p>
+        </div>
+        <dl class="key-map">
+          <div><dt>SPACE</dt><dd>pause / resume</dd></div>
+          <div><dt>S</dt><dd>describe an edit</dd></div>
+          <div><dt>A</dt><dd>promote candidate</dd></div>
+          <div><dt>R</dt><dd>return to source</dd></div>
+        </dl>
+      </section>
+
+      <section class="constraints" aria-labelledby="constraints-title">
+        <h2 id="constraints-title">What Basso will not compromise.</h2>
+        <div class="constraint-list">
+          <article>
+            <span>BAR</span>
+            <h3>Changes land on a boundary.</h3>
+            <p>Never halfway through a groove.</p>
+          </article>
+          <article>
+            <span>AUDIO</span>
+            <h3>The device stays open.</h3>
+            <p>Revisions do not restart playback.</p>
+          </article>
+          <article>
+            <span>LOCAL</span>
+            <h3>Playback needs no provider.</h3>
+            <p>Network access is explicit and optional.</p>
+          </article>
+          <article>
+            <span>BUILD</span>
+            <h3>Pure Go, no cgo.</h3>
+            <p>No native libraries to assemble first.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="install" id="install" aria-labelledby="install-title">
+        <div>
+          <h2 id="install-title">One binary.<br />One pattern file.</h2>
+          <p>Requires a Go toolchain matching the module. Basso brings the runtime and bundled 808 samples.</p>
+        </div>
+        <div class="install-terminal">
+          <div class="install-row">
+            <code>go install github.com/nyelonong/basso/cmd/basso@latest</code>
+            <button type="button" data-copy-install>Copy</button>
+          </div>
+          <div class="install-row install-row-muted">
+            <code>basso play patterns/basic-groove.fnl</code>
+          </div>
+          <p data-copy-status aria-live="polite">Then save the file on any step.</p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>Basso keeps the beat while the code changes.</p>
+      <div>
+        <a href="https://github.com/nyelonong/basso">GitHub</a>
+        <a href="https://github.com/nyelonong/basso/blob/master/LICENSE">GPL-3.0</a>
+      </div>
+      <span>2026</span>
+    </footer>
+  </body>
+</html>

@@ -4,6 +4,8 @@ A live-coding player: a persistent process that plays a Fennel pattern
 continuously and reloads it at the next bar boundary when you save the
 source file, with no audio restart.
 
+[Website](https://basso.afrani.id) · [Source](https://github.com/nyelonong/basso)
+
 ### Install
 
     make install
