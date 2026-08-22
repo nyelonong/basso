@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -730,5 +731,39 @@ func TestCompactDiagnostic_DropsTracebackNoise(t *testing.T) {
 	single := compactDiagnostic("openai-compatible: unexpected HTTP status 503")
 	if single != "openai-compatible: unexpected HTTP status 503" {
 		t.Errorf("compactDiagnostic changed a clean message: %q", single)
+	}
+}
+
+// TestStudioModel_DiffViewportWindows proves a diff taller than the terminal
+// renders as a bounded, scrollable window instead of an unpaintable wall.
+func TestStudioModel_DiffViewportWindows(t *testing.T) {
+	m := newStudioModel("pattern.fnl")
+	m.height = 24 // ~10 diff lines visible
+	long := ""
+	for i := 0; i < 100; i++ {
+		long += fmt.Sprintf("(hit %03d \"kick.wav\" 0.5 0.0)\n", i)
+	}
+	m.diff = long
+
+	view := m.renderDiffView()
+	if got := strings.Count(view, "\n"); got > 14 {
+		t.Errorf("diff view rendered %d lines, want windowed", got)
+	}
+	if !strings.Contains(view, "of 101") {
+		t.Errorf("view = %q, want total-line indicator", view)
+	}
+
+	scrolled := m
+	scrolled.candidate = &suggest.Candidate{Metadata: suggest.Metadata{ID: "test"}}
+	scrolled.diffScroll = 40
+	view = scrolled.renderDiffView()
+	if !strings.Contains(view, "(hit 040") || !strings.Contains(view, "(hit 051") {
+		t.Errorf("scrolled view lost offset content: %q", view[:200])
+	}
+
+	down := tea.KeyMsg{Type: tea.KeyDown}
+	model, _ := scrolled.Update(down)
+	if model.(studioModel).diffScroll != 41 {
+		t.Errorf("down key did not scroll: %d", model.(studioModel).diffScroll)
 	}
 }

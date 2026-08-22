@@ -121,6 +121,9 @@ type studioModel struct {
 	startedAt  time.Time
 	elapsed    time.Duration
 	spinner    spinner.Model
+
+	height     int
+	diffScroll int
 }
 
 // maxStudioEvents caps the on-screen event log; older reload diagnostics
@@ -175,6 +178,22 @@ func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.events = append(m.events, "suggest cancelled")
 				return m, nil
 			}
+		case "up", "k":
+			if m.candidate != nil && m.mode == studioIdle && m.diffScroll > 0 {
+				m.diffScroll--
+			}
+		case "down", "j":
+			if m.candidate != nil && m.mode == studioIdle {
+				m.diffScroll++
+			}
+		case "pgup":
+			if m.candidate != nil && m.mode == studioIdle {
+				m.diffScroll -= m.viewportLines()
+			}
+		case "pgdown":
+			if m.candidate != nil && m.mode == studioIdle {
+				m.diffScroll += m.viewportLines()
+			}
 		case "a":
 			if m.candidate == nil || m.mode != studioIdle || m.store == nil {
 				break
@@ -228,6 +247,8 @@ func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.prompt, cmd = m.prompt.Update(msg)
 			return m, cmd
 		}
+	case tea.WindowSizeMsg:
+		m.height = msg.Height
 	case suggestPromptMsg:
 		if m.mode != studioIdle {
 			return m, nil
@@ -287,6 +308,7 @@ func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.candidate = &candidate
 		m.diff = m.renderDiff()
+		m.diffScroll = 0
 	case candidateAppliedMsg:
 		m.candidate = nil
 		m.diff = ""
@@ -343,7 +365,7 @@ func (m studioModel) View() string {
 		out.WriteString(fmt.Sprintf("candidate %s: %s [validation %s]\n",
 			shortID(m.candidate.Metadata.ID), m.candidate.Metadata.Summary, m.candidate.Metadata.Validation.Status))
 		if m.diff != "" {
-			out.WriteString("\ndiff:\n" + highlightDiff(m.diff))
+			out.WriteString("\n" + m.renderDiffView())
 		}
 	}
 	out.WriteString("\nq quit · s suggest · a apply · r reject\n")
@@ -759,4 +781,50 @@ func compactDiagnostic(message string) string {
 		out = out[:397] + "..."
 	}
 	return out
+}
+
+// reservedDiffLines is the vertical space the rest of the cockpit claims
+// before the diff window; the diff gets what remains.
+const reservedDiffLines = 12
+
+func (m studioModel) viewportLines() int {
+	lines := m.height - reservedDiffLines
+	if lines < 6 {
+		lines = 6
+	}
+	if lines > 60 {
+		lines = 60
+	}
+	return lines
+}
+
+// renderDiffView windows the candidate diff to a terminal-sized slice with a
+// position header, so huge rewrites stay paintable and scrollable.
+func (m studioModel) renderDiffView() string {
+	lines := strings.Split(m.diff, "\n")
+	visible := m.viewportLines()
+	maxScroll := len(lines) - visible
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	start := m.diffScroll
+	if start < 0 {
+		start = 0
+	}
+	if start > maxScroll {
+		start = maxScroll
+	}
+	end := start + visible
+	if end > len(lines) {
+		end = len(lines)
+	}
+
+	var out strings.Builder
+	out.WriteString(fmt.Sprintf("diff: lines %d–%d of %d", start+1, end, len(lines)))
+	if len(lines) > visible {
+		out.WriteString(" (↑↓ scroll)")
+	}
+	out.WriteString("\n")
+	out.WriteString(highlightDiff(strings.Join(lines[start:end], "\n")))
+	return out.String()
 }
