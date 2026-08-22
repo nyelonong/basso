@@ -54,7 +54,7 @@ Usage:
   basso --help                                   Show this help.
 
 Suggestion flags:
-  --provider <openai|ollama>  AI provider (required).
+  --provider <openai|ollama|openai-compatible>  AI provider (required).
   --model <name>              Provider model name (required).
   --timeout <duration>        Provider request timeout (default 60s).
   --sounds <path>             Sound inventory directory (default sound/808).
@@ -65,6 +65,8 @@ Provider environment:
   BASSO_AI_TIMEOUT   Default provider request timeout.
   OPENAI_API_KEY     API key required by the OpenAI provider.
   BASSO_OLLAMA_URL   Ollama base URL (default http://127.0.0.1:11434).
+  BASSO_AI_BASE_URL  Base URL required by the openai-compatible provider.
+  BASSO_AI_API_KEY   API key required by the openai-compatible provider.
 `
 	var stdout bytes.Buffer
 	deps := testCommandDependencies(t.TempDir(), &stdout, io.Discard)

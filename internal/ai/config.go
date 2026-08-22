@@ -20,11 +20,13 @@ type Overrides struct {
 }
 
 type Config struct {
-	Provider     string
-	Model        string
-	Timeout      time.Duration
-	OpenAIAPIKey string
-	OllamaURL    *url.URL
+	Provider            string
+	Model               string
+	Timeout             time.Duration
+	OpenAIAPIKey        string
+	OllamaURL           *url.URL
+	OpenAICompatAPIKey  string
+	OpenAICompatBaseURL *url.URL
 }
 
 func ResolveConfig(overrides Overrides, getenv func(string) string) (Config, error) {
@@ -46,7 +48,7 @@ func ResolveConfig(overrides Overrides, getenv func(string) string) (Config, err
 	if model != trimmedModel {
 		return Config{}, errors.New("ai: model must not contain surrounding whitespace")
 	}
-	if provider != "openai" && provider != "ollama" {
+	if provider != "openai" && provider != "ollama" && provider != "openai-compatible" {
 		return Config{}, fmt.Errorf("ai: unsupported provider %q", provider)
 	}
 
@@ -75,6 +77,23 @@ func ResolveConfig(overrides Overrides, getenv func(string) string) (Config, err
 		return config, nil
 	}
 
+	if provider == "openai-compatible" {
+		config.OpenAICompatAPIKey = getenv("BASSO_AI_API_KEY")
+		if strings.TrimSpace(config.OpenAICompatAPIKey) == "" {
+			return Config{}, errors.New("ai: BASSO_AI_API_KEY is required for openai-compatible")
+		}
+		baseURL := getenv("BASSO_AI_BASE_URL")
+		if strings.TrimSpace(baseURL) == "" {
+			return Config{}, errors.New("ai: BASSO_AI_BASE_URL is required for openai-compatible")
+		}
+		parsed, err := normalizeHTTPBaseURL(baseURL)
+		if err != nil {
+			return Config{}, fmt.Errorf("ai: invalid BASSO_AI_BASE_URL: %w", err)
+		}
+		config.OpenAICompatBaseURL = parsed
+		return config, nil
+	}
+
 	ollamaURL := getenv("BASSO_OLLAMA_URL")
 	if ollamaURL == "" {
 		ollamaURL = defaultOllamaURL
@@ -96,6 +115,31 @@ func resolveValue(override string, environment string) string {
 }
 
 func normalizeHTTPOrigin(raw string) (*url.URL, error) {
+	parsed, err := parseHTTPURL(raw)
+	if err != nil {
+		return nil, err
+	}
+	return &url.URL{
+		Scheme: parsed.Scheme,
+		Host:   parsed.Host,
+	}, nil
+}
+
+// normalizeHTTPBaseURL keeps the URL path because OpenAI-compatible gateways
+// mount their chat endpoint under provider-specific prefixes such as /zen/go/v1.
+func normalizeHTTPBaseURL(raw string) (*url.URL, error) {
+	parsed, err := parseHTTPURL(raw)
+	if err != nil {
+		return nil, err
+	}
+	return &url.URL{
+		Scheme: parsed.Scheme,
+		Host:   parsed.Host,
+		Path:   strings.TrimSuffix(parsed.Path, "/"),
+	}, nil
+}
+
+func parseHTTPURL(raw string) (*url.URL, error) {
 	parsed, err := url.Parse(raw)
 	if err != nil {
 		return nil, fmt.Errorf("parse URL: %w", err)
@@ -115,9 +159,5 @@ func normalizeHTTPOrigin(raw string) (*url.URL, error) {
 	if parsed.Fragment != "" || strings.Contains(raw, "#") {
 		return nil, errors.New("fragment is not allowed")
 	}
-
-	return &url.URL{
-		Scheme: parsed.Scheme,
-		Host:   parsed.Host,
-	}, nil
+	return parsed, nil
 }
