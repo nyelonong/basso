@@ -101,6 +101,7 @@ type FennelProvider struct {
 	pendingMu sync.Mutex
 	pending   *string
 
+	path        string
 	watcher     *fsnotify.Watcher
 	watcherDone chan struct{}
 }
@@ -160,6 +161,7 @@ func NewFromFile(
 		return nil, fmt.Errorf("fennel: watch %s: %w", parent, err)
 	}
 
+	fp.path = cleanPath
 	fp.watcher = watcher
 	fp.watcherDone = make(chan struct{})
 	go fp.watchLoop(cleanPath)
@@ -280,6 +282,19 @@ func (fp *FennelProvider) watchLoop(path string) {
 			fp.report(watchDiagnostic(fp.observedRevisionSHA256(), err))
 		}
 	}
+}
+
+// Refresh synchronously stages the current file for the next bar.
+func (fp *FennelProvider) Refresh() error {
+	if fp.path == "" {
+		return errors.New("fennel: provider is not file-backed")
+	}
+	data, err := os.ReadFile(fp.path)
+	if err != nil {
+		return fmt.Errorf("fennel: refresh %s: %w", fp.path, err)
+	}
+	fp.setPendingSource(string(data))
+	return nil
 }
 
 // Close stops fp's fsnotify watcher goroutine and releases its underlying

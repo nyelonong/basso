@@ -12,6 +12,28 @@ import (
 	"time"
 )
 
+func TestStore_DiscardRemovesCandidatePair(t *testing.T) {
+	root := filepath.Join(t.TempDir(), ".basso")
+	store := NewStore(root, nil)
+	saved, err := store.Save(testCandidate([]byte("(bpm 120)\n")))
+	if err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	if err := store.Discard(saved.Metadata.ID); err != nil {
+		t.Fatalf("Discard() error = %v", err)
+	}
+	for _, extension := range []string{".fnl", ".json"} {
+		path := filepath.Join(root, "candidates", saved.Metadata.ID+extension)
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("candidate artifact %s still exists: %v", path, err)
+		}
+	}
+	if err := store.Discard(saved.Metadata.ID); err != nil {
+		t.Fatalf("idempotent Discard() error = %v", err)
+	}
+}
+
 func TestStore_SaveCreatesSchemaV1Pair(t *testing.T) {
 	t.Parallel()
 

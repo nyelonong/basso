@@ -53,6 +53,14 @@ type suggestionFailedMsg struct {
 type candidateAppliedMsg struct {
 	id         string
 	backupPath string
+	cleanupErr error
+}
+
+type candidateRejectedMsg struct{ id string }
+
+type candidateRejectFailedMsg struct {
+	id  string
+	err error
 }
 
 type applyFailedMsg struct {
@@ -111,6 +119,7 @@ type studioModel struct {
 	generation     int
 	pendingSuggest int
 	candidate      *suggest.Candidate
+	candidateBusy  bool
 	diff           string
 	lastError      string
 	cancelSuggest  context.CancelFunc
@@ -219,25 +228,36 @@ func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.diffScroll += m.viewportLines()
 			}
 		case "a":
-			if m.candidate == nil || m.mode != studioIdle || m.store == nil {
+			if m.candidate == nil || m.mode != studioIdle || m.store == nil || m.candidateBusy {
 				break
 			}
 			id := m.candidate.Metadata.ID
-			store, preflighter := m.store, m.services.newPreflighter
+			store, preflighter, transport := m.store, m.services.newPreflighter, m.transport
+			m.candidateBusy = true
 			return m, func() tea.Msg {
 				result, err := suggest.NewApplier(store, preflighter, nil).Apply(context.Background(), id)
 				if err != nil {
 					return applyFailedMsg{id: id, err: err}
 				}
-				return candidateAppliedMsg{id: id, backupPath: result.BackupPath}
+				return candidateAppliedMsg{
+					id:         id,
+					backupPath: result.BackupPath,
+					cleanupErr: commitStudioCandidate(transport, store, id),
+				}
 			}
 		case "r":
-			if m.candidate == nil || m.mode != studioIdle {
+			if m.candidate == nil || m.mode != studioIdle || m.store == nil || m.candidateBusy {
 				break
 			}
-			m.candidate = nil
-			m.diff = ""
-			m.events = append(m.events, "candidate rejected")
+			id := m.candidate.Metadata.ID
+			store, transport := m.store, m.transport
+			m.candidateBusy = true
+			return m, func() tea.Msg {
+				if err := cleanupStudioCandidate(transport, store, id); err != nil {
+					return candidateRejectFailedMsg{id: id, err: err}
+				}
+				return candidateRejectedMsg{id: id}
+			}
 		case "enter":
 			if m.mode == studioPrompting {
 				request := strings.TrimSpace(m.prompt.Value())
@@ -344,10 +364,23 @@ func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.diffScroll = 0
 	case candidateAppliedMsg:
 		m.candidate = nil
+		m.candidateBusy = false
 		m.diff = ""
 		m.lastError = ""
 		m.events = append(m.events, fmt.Sprintf("applied %s backup %s", shortID(msg.id), msg.backupPath))
+		if msg.cleanupErr != nil {
+			m.events = append(m.events, "candidate cleanup failed: "+msg.cleanupErr.Error())
+		}
+	case candidateRejectedMsg:
+		m.candidate = nil
+		m.candidateBusy = false
+		m.diff = ""
+		m.events = append(m.events, "candidate rejected")
+	case candidateRejectFailedMsg:
+		m.candidateBusy = false
+		m.events = append(m.events, "candidate cleanup failed: "+msg.err.Error())
 	case applyFailedMsg:
+		m.candidateBusy = false
 		m.lastError = "apply " + shortID(msg.id) + ": " + msg.err.Error()
 	case suggestionFailedMsg:
 		if msg.generation != m.generation && m.mode != studioRunning {
@@ -636,6 +669,33 @@ func shortID(id string) string {
 	return id
 }
 
+func commitStudioCandidate(transport studioTransportControl, store *suggest.Store, id string) error {
+	if transport != nil {
+		if err := transport.CommitCandidate(); err != nil {
+			return fmt.Errorf("commit candidate provider: %w", err)
+		}
+	}
+	return discardStudioCandidate(store, id)
+}
+
+func cleanupStudioCandidate(transport studioTransportControl, store *suggest.Store, id string) error {
+	if transport != nil {
+		if err := transport.ReleaseCandidate(); err != nil {
+			return fmt.Errorf("release candidate provider: %w", err)
+		}
+	}
+	return discardStudioCandidate(store, id)
+}
+
+func discardStudioCandidate(store *suggest.Store, id string) error {
+	if store != nil {
+		if err := store.Discard(id); err != nil {
+			return fmt.Errorf("discard candidate files: %w", err)
+		}
+	}
+	return nil
+}
+
 // newSuggestCmd builds the async request without owning its cancellation;
 // Enter-driven submissions wrap it with a per-request context instead.
 func (m studioModel) newSuggestCmd(services studioServices, sourcePath, request string) tea.Cmd {
@@ -815,11 +875,16 @@ func runStudioCommand(ctx context.Context, args []string, deps commandDependenci
 		}
 	}()
 	transport.Start()
-	_, programErr := program.Run()
+	finalModel, programErr := program.Run()
 	cancel()
+	transport.Stop()
+	var cleanupErr error
+	if studio, ok := finalModel.(studioModel); ok && studio.candidate != nil {
+		cleanupErr = cleanupStudioCandidate(transport, studio.store, studio.candidate.Metadata.ID)
+	}
 	transportErr := transport.Close()
 	<-forwardDone
-	return errors.Join(programErr, transportErr)
+	return errors.Join(programErr, cleanupErr, transportErr)
 }
 
 // compactDiagnostic strips fennel/engine stack-trace frames from failure

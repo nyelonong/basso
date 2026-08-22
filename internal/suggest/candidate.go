@@ -78,6 +78,22 @@ func (s *Store) CandidateSourcePath(id string) (string, error) {
 	return filepath.Join(s.root, candidateDirectory, id+".fnl"), nil
 }
 
+// Discard removes a candidate source and metadata pair if present.
+func (s *Store) Discard(id string) error {
+	sourcePath, err := s.CandidateSourcePath(id)
+	if err != nil {
+		return err
+	}
+	metadataPath := filepath.Join(s.root, candidateDirectory, id+".json")
+	remove := func(path string) error {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	return errors.Join(remove(sourcePath), remove(metadataPath))
+}
+
 // Save writes a candidate source and metadata pair using exclusive, private
 // file creation. It fills the schema version, creation time, candidate hash,
 // and deterministic ID.

@@ -399,6 +399,37 @@ func TestFennelProvider_RealFsnotify(t *testing.T) {
 	}
 }
 
+func TestFennelProvider_RefreshStagesAcceptedSourceImmediately(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "pattern.fnl")
+	if err := os.WriteFile(path, []byte(fennelSourceSample("a.wav")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	provider, err := NewFromFile(
+		path,
+		NewEvaluator(SoundInventory{"a.wav": {}, "b.wav": {}}, legacyEvaluationTimeout),
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer provider.Close()
+
+	if err := os.WriteFile(path, []byte(fennelSourceSample("b.wav")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+	hits, _, _, err := provider.Next(1)
+	if err != nil {
+		t.Fatalf("Next(1) error = %v", err)
+	}
+	if len(hits) != 1 || hits[0].Sample != "b.wav" {
+		t.Fatalf("Next(1) hits = %+v, want immediate b.wav revision", hits)
+	}
+}
+
 func TestFennelProvider_WatchesAtomicReplacement(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "pattern.fnl")

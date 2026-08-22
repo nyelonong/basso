@@ -26,6 +26,11 @@ type headlessProgram struct {
 	program *tea.Program
 }
 
+type fixedStudioProgram struct{ model tea.Model }
+
+func (program fixedStudioProgram) Run() (tea.Model, error) { return program.model, nil }
+func (fixedStudioProgram) Send(tea.Msg)                    {}
+
 func (p headlessProgram) Run() (tea.Model, error) {
 	return p.program.Run()
 }
@@ -124,6 +129,54 @@ func TestRunStudioCommand_WiresCandidateStore(t *testing.T) {
 
 	if err := runStudioCommand(context.Background(), []string{"pattern.fnl"}, deps); err != nil {
 		t.Fatalf("runStudioCommand() error = %v", err)
+	}
+}
+
+func TestRunStudioCommand_QuitDiscardsArmedCandidate(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "pattern.fnl")
+	original := []byte(validProposalSource)
+	if err := os.WriteFile(source, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	id := "20260822T000000.000000000Z-0123456789ab"
+	candidateDir := filepath.Join(dir, ".basso", "candidates")
+	candidatePath := filepath.Join(candidateDir, id+".fnl")
+	metadataPath := filepath.Join(candidateDir, id+".json")
+
+	deps := testCommandDependencies(dir, io.Discard, io.Discard)
+	deps.newProvider = func(string, engine.DiagnosticReporter) (closablePatternProvider, error) {
+		return &transportTestProvider{bars: make(chan int, 16)}, nil
+	}
+	deps.newSink = func() engine.AudioSink { return &transportTestSink{} }
+	deps.newStudioProgram = func(model tea.Model, _ ...tea.ProgramOption) programRunner {
+		if err := os.MkdirAll(candidateDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(candidatePath, []byte(modifiedProposalSource), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(metadataPath, []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		studio := model.(studioModel)
+		if err := studio.transport.ArmCandidate(candidatePath); err != nil {
+			t.Fatal(err)
+		}
+		studio.candidate = &suggest.Candidate{Metadata: suggest.Metadata{ID: id}}
+		return fixedStudioProgram{model: studio}
+	}
+
+	if err := runStudioCommand(context.Background(), []string{"pattern.fnl"}, deps); err != nil {
+		t.Fatalf("runStudioCommand() error = %v", err)
+	}
+	if got, err := os.ReadFile(source); err != nil || !bytes.Equal(got, original) {
+		t.Fatalf("real source after quit = %q, %v; want unchanged %q", got, err, original)
+	}
+	for _, path := range []string{candidatePath, metadataPath} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("candidate artifact %s survived quit: %v", path, err)
+		}
 	}
 }
 
@@ -555,20 +608,33 @@ func TestStudioModel_CandidateRendersDiffAndStatus(t *testing.T) {
 	}
 }
 
-// TestStudioModel_RejectClearsWithoutWrites proves r drops the candidate and
-// never touches the source file.
+// TestStudioModel_RejectClearsWithoutWrites proves r removes the candidate
+// pair without touching the real source file.
 func TestStudioModel_RejectClearsWithoutWrites(t *testing.T) {
 	dir := t.TempDir()
-	m, source := readyCandidateModel(t, dir)
+	control := &recordingTransport{state: transportPlaying}
+	m, source := readyCandidateModelWithTransport(t, dir, control)
 	before, _ := os.ReadFile(source)
+	id := m.candidate.Metadata.ID
+	control.onRelease = func() {
+		path := filepath.Join(dir, ".basso", "candidates", id+".fnl")
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("candidate source was deleted before provider release: %v", err)
+		}
+	}
 
 	r := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}}
 	rejected, cmd := m.Update(r)
+	if cmd == nil {
+		t.Fatal("reject produced no lifecycle command")
+	}
+	message := cmd()
+	if _, ok := message.(candidateRejectedMsg); !ok {
+		t.Fatalf("reject command = %T, want candidateRejectedMsg", message)
+	}
+	rejected, _ = rejected.Update(message)
 	m2 := rejected.(studioModel)
 
-	if cmd != nil {
-		t.Error("reject produced an unexpected command")
-	}
 	if m2.candidate != nil || strings.Contains(m2.View(), "denser hats") {
 		t.Errorf("candidate survived reject: view=%q", m2.View())
 	}
@@ -576,13 +642,51 @@ func TestStudioModel_RejectClearsWithoutWrites(t *testing.T) {
 	if !bytes.Equal(before, after) {
 		t.Error("reject modified the source file")
 	}
+	for _, extension := range []string{".fnl", ".json"} {
+		path := filepath.Join(dir, ".basso", "candidates", id+extension)
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("candidate artifact %s still exists: %v", path, err)
+		}
+	}
+	if got := strings.Join(control.calls, ","); got != "arm,release" {
+		t.Errorf("transport calls = %q, want arm,release", got)
+	}
+}
+
+func TestStudioModel_RejectCleanupFailureKeepsCandidate(t *testing.T) {
+	dir := t.TempDir()
+	control := &recordingTransport{state: transportPlaying, releaseErr: errors.New("close watcher")}
+	m, _ := readyCandidateModelWithTransport(t, dir, control)
+	id := m.candidate.Metadata.ID
+
+	pending, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	message := cmd()
+	if _, ok := message.(candidateRejectFailedMsg); !ok {
+		t.Fatalf("reject command = %T, want candidateRejectFailedMsg", message)
+	}
+	pending, _ = pending.Update(message)
+	final := pending.(studioModel)
+	if final.candidate == nil || final.candidateBusy {
+		t.Fatalf("failed reject candidate/busy = %v/%v, want retained/false", final.candidate, final.candidateBusy)
+	}
+	if !strings.Contains(final.View(), "candidate cleanup failed") {
+		t.Fatalf("View() = %q, want cleanup failure", final.View())
+	}
+	for _, extension := range []string{".fnl", ".json"} {
+		path := filepath.Join(dir, ".basso", "candidates", id+extension)
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("candidate artifact %s missing after failed cleanup: %v", path, err)
+		}
+	}
 }
 
 // TestStudioModel_ApplyGoesThroughTransactionalApplier proves a writes the
 // candidate via the applier: source replaced, backup created, event logged.
 func TestStudioModel_ApplyGoesThroughTransactionalApplier(t *testing.T) {
 	dir := t.TempDir()
-	m, source := readyCandidateModel(t, dir)
+	control := &recordingTransport{state: transportPlaying}
+	m, source := readyCandidateModelWithTransport(t, dir, control)
+	id := m.candidate.Metadata.ID
 
 	a := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
 	withCmd, cmd := m.Update(a)
@@ -612,6 +716,43 @@ func TestStudioModel_ApplyGoesThroughTransactionalApplier(t *testing.T) {
 	}
 	if final.candidate != nil {
 		t.Error("candidate stayed armed after apply")
+	}
+	for _, extension := range []string{".fnl", ".json"} {
+		path := filepath.Join(dir, ".basso", "candidates", id+extension)
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("candidate artifact %s still exists: %v", path, err)
+		}
+	}
+	if got := strings.Join(control.calls, ","); got != "arm,commit" {
+		t.Errorf("transport calls = %q, want arm,commit", got)
+	}
+}
+
+func TestStudioModel_ApplyCleanupFailureKeepsCommit(t *testing.T) {
+	dir := t.TempDir()
+	control := &recordingTransport{state: transportPlaying, commitErr: errors.New("refresh real provider")}
+	m, source := readyCandidateModelWithTransport(t, dir, control)
+	id := m.candidate.Metadata.ID
+
+	pending, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	message := cmd()
+	applied, ok := message.(candidateAppliedMsg)
+	if !ok || applied.cleanupErr == nil {
+		t.Fatalf("apply command = %#v, want applied with cleanup error", message)
+	}
+	pending, _ = pending.Update(message)
+	final := pending.(studioModel)
+	if final.candidate != nil || !strings.Contains(final.View(), "candidate cleanup failed") {
+		t.Fatalf("final candidate/view = %v/%q, want cleared with cleanup error", final.candidate, final.View())
+	}
+	if got, _ := os.ReadFile(source); string(got) != modifiedProposalSource {
+		t.Fatalf("source after cleanup failure = %q, want committed candidate", got)
+	}
+	for _, extension := range []string{".fnl", ".json"} {
+		path := filepath.Join(dir, ".basso", "candidates", id+extension)
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("candidate artifact %s missing after failed cleanup: %v", path, err)
+		}
 	}
 }
 

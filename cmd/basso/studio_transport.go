@@ -32,6 +32,8 @@ type studioTransportControl interface {
 	Stop() studioTransportState
 	Play() studioTransportState
 	ArmCandidate(string) error
+	CommitCandidate() error
+	ReleaseCandidate() error
 }
 
 type providerSwitch struct {
@@ -69,6 +71,30 @@ func (provider *switchingProvider) Arm(candidate engine.PatternProvider, immedia
 	return done, nil
 }
 
+func (provider *switchingProvider) UseReal(immediate bool) <-chan struct{} {
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	done := make(chan struct{})
+	if provider.pending != nil {
+		close(provider.pending.done)
+		provider.pending = nil
+	}
+	if immediate || provider.candidate == nil {
+		provider.activeCandidate = false
+		close(done)
+	} else {
+		provider.pending = &providerSwitch{done: done}
+	}
+	return done
+}
+
+func (provider *switchingProvider) ClearCandidate() {
+	provider.mu.Lock()
+	provider.candidate = nil
+	provider.activeCandidate = false
+	provider.mu.Unlock()
+}
+
 func (provider *switchingProvider) Next(bar int) ([]engine.Hit, int, int, error) {
 	provider.mu.Lock()
 	if provider.pending != nil {
@@ -102,6 +128,7 @@ type studioTransport struct {
 	streamCancel context.CancelFunc
 	streamDone   chan error
 	lastErr      error
+	releasing    bool
 	closed       bool
 	closeOnce    sync.Once
 	closeErr     error
@@ -182,6 +209,9 @@ func (transport *studioTransport) TogglePause() studioTransportState {
 	case transportPlaying:
 		transport.pace.Pause()
 		transport.state = transportPaused
+		if transport.releasing {
+			transport.switcher.UseReal(true)
+		}
 	case transportPaused:
 		transport.pace.Resume()
 		transport.state = transportPlaying
@@ -198,6 +228,9 @@ func (transport *studioTransport) Stop() studioTransportState {
 	cancel, done := transport.streamCancel, transport.streamDone
 	transport.streamCancel, transport.streamDone = nil, nil
 	transport.state = transportStopped
+	if transport.releasing {
+		transport.switcher.UseReal(true)
+	}
 	transport.mu.Unlock()
 
 	if cancel != nil {
@@ -246,17 +279,50 @@ func (transport *studioTransport) ArmCandidate(path string) error {
 	return nil
 }
 
+func (transport *studioTransport) CommitCandidate() error {
+	var refreshErr error
+	if provider, ok := transport.provider.(interface{ Refresh() error }); ok {
+		refreshErr = provider.Refresh()
+	}
+	return errors.Join(refreshErr, transport.ReleaseCandidate())
+}
+
+func (transport *studioTransport) ReleaseCandidate() error {
+	transport.mu.Lock()
+	candidate := transport.candidateProvider
+	if candidate == nil {
+		transport.mu.Unlock()
+		return nil
+	}
+	if transport.releasing {
+		transport.mu.Unlock()
+		return errors.New("candidate release is already in progress")
+	}
+	transport.releasing = true
+	switched := transport.switcher.UseReal(transport.state != transportPlaying)
+	transport.mu.Unlock()
+
+	<-switched
+	transport.switcher.ClearCandidate()
+	closeErr := candidate.Close()
+
+	transport.mu.Lock()
+	transport.releasing = false
+	if closeErr == nil && transport.candidateProvider == candidate {
+		transport.candidateProvider = nil
+	}
+	transport.mu.Unlock()
+	return closeErr
+}
+
 func (transport *studioTransport) Close() error {
 	transport.closeOnce.Do(func() {
 		transport.Stop()
+		candidateErr := transport.ReleaseCandidate()
 		transport.mu.Lock()
 		transport.closed = true
 		transport.mu.Unlock()
 		transport.sink.Teardown()
-		var candidateErr error
-		if transport.candidateProvider != nil {
-			candidateErr = transport.candidateProvider.Close()
-		}
 		providerErr := transport.provider.Close()
 		transport.mu.Lock()
 		transport.closeErr = errors.Join(transport.lastErr, candidateErr, providerErr)
