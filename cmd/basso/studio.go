@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/nyelonong/basso/internal/ai"
 	"github.com/nyelonong/basso/internal/engine"
 	"github.com/nyelonong/basso/internal/suggest"
+	"github.com/pmezard/go-difflib/difflib"
 )
 
 type barMsg struct {
@@ -42,6 +44,16 @@ type suggestionReadyMsg struct {
 type suggestionFailedMsg struct {
 	generation int
 	err        error
+}
+
+type candidateAppliedMsg struct {
+	id         string
+	backupPath string
+}
+
+type applyFailedMsg struct {
+	id  string
+	err error
 }
 
 // studioServices carries the lazily-resolved AI dependencies behind the
@@ -84,14 +96,17 @@ type studioModel struct {
 	diagnosticsObserved int
 	events              []string
 
-	mode          studioMode
-	prompt        textinput.Model
-	generation    int
-	candidate     *suggest.Candidate
-	lastError     string
-	cancelSuggest context.CancelFunc
-	sourcePath    string
-	services      studioServices
+	mode           studioMode
+	prompt         textinput.Model
+	generation     int
+	pendingSuggest int
+	candidate      *suggest.Candidate
+	diff           string
+	lastError      string
+	cancelSuggest  context.CancelFunc
+	sourcePath     string
+	services       studioServices
+	store          *suggest.Store
 }
 
 // maxStudioEvents caps the on-screen event log; older reload diagnostics
@@ -128,9 +143,30 @@ func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case studioRunning:
 				m.cancelSuggest()
 				m.mode = studioIdle
+				m.pendingSuggest = 0
 				m.events = append(m.events, "suggest cancelled")
 				return m, nil
 			}
+		case "a":
+			if m.candidate == nil || m.mode != studioIdle || m.store == nil {
+				break
+			}
+			id := m.candidate.Metadata.ID
+			store, preflighter := m.store, m.services.newPreflighter
+			return m, func() tea.Msg {
+				result, err := suggest.NewApplier(store, preflighter, nil).Apply(context.Background(), id)
+				if err != nil {
+					return applyFailedMsg{id: id, err: err}
+				}
+				return candidateAppliedMsg{id: id, backupPath: result.BackupPath}
+			}
+		case "r":
+			if m.candidate == nil || m.mode != studioIdle {
+				break
+			}
+			m.candidate = nil
+			m.diff = ""
+			m.events = append(m.events, "candidate rejected")
 		case "enter":
 			if m.mode == studioPrompting {
 				request := strings.TrimSpace(m.prompt.Value())
@@ -139,6 +175,7 @@ func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.generation++
 				generation := m.generation
+				m.pendingSuggest = generation
 				ctx, cancel := context.WithCancel(context.Background())
 				m.cancelSuggest = cancel
 				m.mode = studioRunning
@@ -190,12 +227,30 @@ func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Quit
 	case suggestionReadyMsg:
-		if msg.generation != m.generation || m.mode != studioRunning {
+		if msg.generation == 0 || msg.generation != m.pendingSuggest {
 			return m, nil
 		}
+		m.pendingSuggest = 0
 		m.mode = studioIdle
 		m.lastError = ""
-		m.candidate = &msg.candidate
+		candidate := msg.candidate
+		if m.store != nil {
+			saved, err := m.store.Save(candidate)
+			if err != nil {
+				m.lastError = "save candidate: " + err.Error()
+				return m, nil
+			}
+			candidate = saved
+		}
+		m.candidate = &candidate
+		m.diff = m.renderDiff()
+	case candidateAppliedMsg:
+		m.candidate = nil
+		m.diff = ""
+		m.lastError = ""
+		m.events = append(m.events, fmt.Sprintf("applied %s backup %s", shortID(msg.id), msg.backupPath))
+	case applyFailedMsg:
+		m.lastError = "apply " + shortID(msg.id) + ": " + msg.err.Error()
 	case suggestionFailedMsg:
 		if msg.generation != m.generation && m.mode != studioRunning {
 			return m, nil
@@ -236,9 +291,31 @@ func (m studioModel) View() string {
 	if m.candidate != nil {
 		out.WriteString(fmt.Sprintf("candidate %s: %s [validation %s]\n",
 			shortID(m.candidate.Metadata.ID), m.candidate.Metadata.Summary, m.candidate.Metadata.Validation.Status))
+		if m.diff != "" {
+			out.WriteString("\ndiff:\n" + m.diff)
+		}
 	}
-	out.WriteString("\nq quit · s suggest\n")
+	out.WriteString("\nq quit · s suggest · a apply · r reject\n")
 	return out.String()
+}
+
+// renderDiff diffs the on-disk source against the pending candidate.
+func (m studioModel) renderDiff() string {
+	current, err := os.ReadFile(m.sourcePath)
+	if err != nil {
+		return "(source unreadable: " + err.Error() + ")"
+	}
+	diff, err := difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
+		A:        difflib.SplitLines(string(current)),
+		B:        difflib.SplitLines(string(m.candidate.Source)),
+		FromFile: m.sourcePath,
+		ToFile:   "candidate",
+		Context:  3,
+	})
+	if err != nil {
+		return "(diff unavailable)"
+	}
+	return diff
 }
 
 func shortID(id string) string {

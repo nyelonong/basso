@@ -437,3 +437,155 @@ func TestStudioModel_CancelledContextYieldsFailure(t *testing.T) {
 		t.Fatal("cancelled request did not yield suggestionFailedMsg")
 	}
 }
+
+// --- candidate review fixtures ---
+
+const modifiedProposalSource = "(bpm 140)\n(fn pattern [bar] [])\npattern\n"
+
+// readyCandidateModel drives a real end-to-end suggest through the model
+// (fake provider, real service, real temp-dir store) and returns the model
+// holding a saved candidate plus the source path.
+func readyCandidateModel(t *testing.T, dir string) (studioModel, string) {
+	t.Helper()
+	source := filepath.Join(dir, "pattern.fnl")
+	if err := os.WriteFile(source, []byte(validProposalSource), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deps := studioSuggestDeps(t, dir, fakeStudioModel{
+		proposal: suggest.Proposal{Summary: "denser hats", Source: modifiedProposalSource},
+	})
+	deps.getenv = studioEnvConfig(deps.getenv)
+
+	m := newStudioModel("pattern.fnl")
+	m.sourcePath = source
+	m.services = studioTestServices(deps, dir)
+	m.store = suggest.NewStore(filepath.Join(dir, ".basso"), deps.now)
+
+	var model tea.Model = m
+	model, _ = model.Update(barMsg{bar: 3, bpm: 130, stepsPerBar: 16})
+	model, _ = model.Update(suggestPromptMsg{})
+	m = model.(studioModel)
+	m.prompt.SetValue("more hats")
+	model = m
+	model, submitCmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if submitCmd == nil {
+		t.Fatal("submit produced no command")
+	}
+	ready, ok := submitCmd().(suggestionReadyMsg)
+	if !ok {
+		t.Fatalf("submit cmd = %T", ready)
+	}
+	model, _ = model.Update(ready)
+	return model.(studioModel), source
+}
+
+// TestStudioModel_CandidateRendersDiffAndStatus proves a returned candidate
+// shows its summary, validation badge, and a unified diff against the file,
+// and is persisted to the store on arrival.
+func TestStudioModel_CandidateRendersDiffAndStatus(t *testing.T) {
+	dir := t.TempDir()
+	m, _ := readyCandidateModel(t, dir)
+
+	view := m.View()
+	for _, want := range []string{"denser hats", "[validation passed]", "+(bpm 140)", "-(bpm 120)", "diff:"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view = %q, want %q", view, want)
+		}
+	}
+	entries, _ := os.ReadDir(filepath.Join(dir, ".basso", "candidates"))
+	sources := 0
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), ".fnl") {
+			sources++
+		}
+	}
+	if sources != 1 {
+		t.Errorf("saved candidate sources = %d, want 1", sources)
+	}
+}
+
+// TestStudioModel_RejectClearsWithoutWrites proves r drops the candidate and
+// never touches the source file.
+func TestStudioModel_RejectClearsWithoutWrites(t *testing.T) {
+	dir := t.TempDir()
+	m, source := readyCandidateModel(t, dir)
+	before, _ := os.ReadFile(source)
+
+	r := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}}
+	rejected, cmd := m.Update(r)
+	m2 := rejected.(studioModel)
+
+	if cmd != nil {
+		t.Error("reject produced an unexpected command")
+	}
+	if m2.candidate != nil || strings.Contains(m2.View(), "denser hats") {
+		t.Errorf("candidate survived reject: view=%q", m2.View())
+	}
+	after, _ := os.ReadFile(source)
+	if !bytes.Equal(before, after) {
+		t.Error("reject modified the source file")
+	}
+}
+
+// TestStudioModel_ApplyGoesThroughTransactionalApplier proves a writes the
+// candidate via the applier: source replaced, backup created, event logged.
+func TestStudioModel_ApplyGoesThroughTransactionalApplier(t *testing.T) {
+	dir := t.TempDir()
+	m, source := readyCandidateModel(t, dir)
+
+	a := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	withCmd, cmd := m.Update(a)
+	if cmd == nil {
+		t.Fatal("apply key produced no command")
+	}
+	msg := cmd()
+	applied, ok := msg.(candidateAppliedMsg)
+	if !ok {
+		t.Fatalf("apply cmd = %T, want candidateAppliedMsg", msg)
+	}
+	withCmd, _ = withCmd.Update(applied)
+
+	got, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != modifiedProposalSource {
+		t.Errorf("source = %q, want applied candidate content", got)
+	}
+	if applied.backupPath == "" {
+		t.Error("applied result missing backup path")
+	}
+	final := withCmd.(studioModel)
+	if !strings.Contains(final.View(), "applied "+applied.id[:12]) {
+		t.Errorf("view = %q, want applied event", final.View())
+	}
+	if final.candidate != nil {
+		t.Error("candidate stayed armed after apply")
+	}
+}
+
+// TestStudioModel_ApplyFailureSurfaces proves a failed transactional apply
+// renders diagnostics and leaves the source untouched.
+func TestStudioModel_ApplyFailureSurfaces(t *testing.T) {
+	dir := t.TempDir()
+	m, source := readyCandidateModel(t, dir)
+
+	// Mutate the file so the base-hash check fails inside the applier.
+	if err := os.WriteFile(source, append([]byte(validProposalSource), []byte("\n;; drift\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	_, cmd := m.Update(a)
+	failed, ok := cmd().(applyFailedMsg)
+	if !ok {
+		t.Fatalf("apply cmd = %T, want applyFailedMsg", cmd())
+	}
+	if !strings.Contains(failed.err.Error(), "hash") {
+		t.Errorf("err = %v, want hash mismatch", failed.err)
+	}
+	got, _ := os.ReadFile(source)
+	if !bytes.Contains(got, []byte("drift")) {
+		t.Error("failed apply still modified the source")
+	}
+}
