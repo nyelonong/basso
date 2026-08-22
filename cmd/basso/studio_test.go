@@ -5,11 +5,15 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/bubbletea"
+	"github.com/nyelonong/basso/internal/ai"
 	"github.com/nyelonong/basso/internal/engine"
+	"github.com/nyelonong/basso/internal/suggest"
 )
 
 // headlessProgram wraps a tea.Program configured for tests: no renderer, no
@@ -132,7 +136,7 @@ func studioDiagnostic(revision string, bar int, phase engine.DiagnosticPhase, me
 
 // TestStudioModel_BarAdvancesInView proves barMsg drives the status line.
 func TestStudioModel_BarAdvancesInView(t *testing.T) {
-	model := newStudioModel("basic-groove.fnl")
+	var model tea.Model = newStudioModel("basic-groove.fnl")
 	if strings.Contains(model.View(), "bar ") {
 		t.Fatalf("initial view shows a bar before playback: %q", model.View())
 	}
@@ -193,7 +197,7 @@ func TestStudioModel_EventLogKeepsMostRecent(t *testing.T) {
 // TestStudioModel_QuitAndPlaybackDone proves quit keys and playback failure
 // both end the program.
 func TestStudioModel_QuitAndPlaybackDone(t *testing.T) {
-	model := newStudioModel("pattern.fnl")
+	var model tea.Model = newStudioModel("pattern.fnl")
 
 	q := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}}
 	if _, cmd := model.Update(q); cmd == nil {
@@ -211,5 +215,225 @@ func TestStudioModel_QuitAndPlaybackDone(t *testing.T) {
 	m := failed.(studioModel)
 	if !strings.Contains(m.View(), "playback stopped: device gone") {
 		t.Errorf("view = %q, want playback failure", m.View())
+	}
+}
+
+// --- suggest flow fixtures ---
+
+type fakeStudioModel struct {
+	proposal suggest.Proposal
+	err      error
+}
+
+func (m fakeStudioModel) Propose(
+	ctx context.Context,
+	request suggest.ModelRequest,
+) (suggest.Proposal, error) {
+	return m.proposal, m.err
+}
+
+type passPreflighter struct{}
+
+func (passPreflighter) Preflight(context.Context, string, int, int) error { return nil }
+
+func studioSuggestDeps(t *testing.T, dir string, model suggest.Model) commandDependencies {
+	t.Helper()
+	deps := testCommandDependencies(dir, io.Discard, io.Discard)
+	deps.newModel = func(ai.Config) (suggest.Model, error) { return model, nil }
+	deps.newPreflighter = func(string) (suggest.Preflighter, error) { return passPreflighter{}, nil }
+	return deps
+}
+
+// studioTestServices binds services against the repository's real sample
+// inventory so runSuggestRequest exercises its full input path.
+func studioTestServices(deps commandDependencies, dir string) studioServices {
+	inventory, err := filepath.Abs(filepath.Join("..", "..", "sound", "808"))
+	if err != nil {
+		panic(err)
+	}
+	return studioServices{
+		getenv:         deps.getenv,
+		invocationDir:  dir,
+		soundsPath:     inventory,
+		newModel:       deps.newModel,
+		newPreflighter: deps.newPreflighter,
+	}
+}
+
+// studioEnvConfig satisfies ai.ResolveConfig without dialing anything.
+func studioEnvConfig(getenv func(string) string) func(string) string {
+	return func(key string) string {
+		switch key {
+		case "BASSO_AI_PROVIDER":
+			if v := getenv(key); v != "" {
+				return v
+			}
+			return "openai-compatible"
+		case "BASSO_AI_MODEL":
+			if v := getenv(key); v != "" {
+				return v
+			}
+			return "test-model"
+		case "BASSO_AI_BASE_URL":
+			if v := getenv(key); v != "" {
+				return v
+			}
+			return "https://gateway.invalid/v1"
+		case "BASSO_AI_API_KEY":
+			if v := getenv(key); v != "" {
+				return v
+			}
+			return "test-key"
+		default:
+			return getenv(key)
+		}
+	}
+}
+
+const validProposalSource = "(bpm 120)\n(fn pattern [bar] [])\npattern\n"
+
+// TestStudioModel_SuggestKeyOpensPrompt proves s enters prompting mode and
+// escape leaves it without side effects.
+func TestStudioModel_SuggestKeyOpensPrompt(t *testing.T) {
+	var model tea.Model = newStudioModel("pattern.fnl")
+	updated, _ := model.Update(suggestPromptMsg{})
+	m := updated.(studioModel)
+	if !strings.Contains(m.View(), "describe the change") {
+		t.Errorf("view = %q, want prompt", m.View())
+	}
+
+	esc := tea.KeyMsg{Type: tea.KeyEsc}
+	escaped, _ := m.Update(esc)
+	m = escaped.(studioModel)
+	if strings.Contains(m.View(), "describe the change") {
+		t.Errorf("view = %q, want prompt closed on escape", m.View())
+	}
+}
+
+// TestStudioModel_SubmitBuildsAsyncCommand proves submitting the prompt
+// produces a command whose message carries a validated candidate end to end
+// through the shared factories.
+func TestStudioModel_SubmitBuildsAsyncCommand(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "pattern.fnl")
+	if err := os.WriteFile(source, []byte(validProposalSource), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deps := studioSuggestDeps(t, dir, fakeStudioModel{
+		proposal: suggest.Proposal{Summary: "denser hats", Source: validProposalSource},
+	})
+	deps.getenv = studioEnvConfig(deps.getenv)
+
+	var model tea.Model = newStudioModel("pattern.fnl")
+	cmd := model.(studioModel).newSuggestCmd(studioTestServices(deps, dir), source, "more hats")
+	if cmd == nil {
+		t.Fatal("submit produced no command")
+	}
+
+	msg := cmd()
+	ready, ok := msg.(suggestionReadyMsg)
+	if !ok {
+		t.Fatalf("cmd() = %T, want suggestionReadyMsg", msg)
+	}
+	if ready.candidate.Metadata.Summary != "denser hats" {
+		t.Errorf("summary = %q, want denser hats", ready.candidate.Metadata.Summary)
+	}
+	if ready.candidate.Metadata.Validation.Status != "passed" {
+		t.Errorf("validation = %q, want passed", ready.candidate.Metadata.Validation.Status)
+	}
+}
+
+// TestStudioModel_MissingConfigIsActionable proves an unconfigured provider
+// renders guidance instead of crashing the loop.
+func TestStudioModel_MissingConfigIsActionable(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "pattern.fnl")
+	if err := os.WriteFile(source, []byte(validProposalSource), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deps := studioSuggestDeps(t, dir, fakeStudioModel{})
+	deps.getenv = func(string) string { return "" }
+
+	var model tea.Model = newStudioModel("pattern.fnl")
+	model, _ = model.Update(barMsg{bar: 3, bpm: 130, stepsPerBar: 16})
+	cmd := model.(studioModel).newSuggestCmd(studioTestServices(deps, dir), source, "x")
+
+	msg := cmd()
+	failed, ok := msg.(suggestionFailedMsg)
+	if !ok {
+		t.Fatalf("cmd() = %T, want suggestionFailedMsg", msg)
+	}
+	updated, _ := model.Update(failed)
+	m := updated.(studioModel)
+	view := m.View()
+	for _, want := range []string{"provider is required", "BASSO_AI_PROVIDER"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view = %q, want %q", view, want)
+		}
+	}
+	if !strings.Contains(view, "bar 3 bpm 130") {
+		t.Errorf("view = %q, want status line preserved through failure", view)
+	}
+}
+
+// TestStudioModel_ProviderErrorSurfaces proves transport/model failures reach
+// the UI verbatim enough to act on.
+func TestStudioModel_ProviderErrorSurfaces(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "pattern.fnl")
+	if err := os.WriteFile(source, []byte(validProposalSource), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deps := studioSuggestDeps(t, dir, fakeStudioModel{
+		err: errors.New("openai-compatible: unexpected HTTP status 503"),
+	})
+	deps.getenv = func(key string) string {
+		if key == "BASSO_AI_PROVIDER" {
+			return "openai-compatible"
+		}
+		if key == "BASSO_AI_MODEL" {
+			return "ox-alpha-free"
+		}
+		if key == "BASSO_AI_BASE_URL" {
+			return "https://gateway.invalid/v1"
+		}
+		if key == "BASSO_AI_API_KEY" {
+			return "k"
+		}
+		return ""
+	}
+
+	var model tea.Model = newStudioModel("pattern.fnl")
+	cmd := model.(studioModel).newSuggestCmd(studioTestServices(deps, dir), source, "x")
+	failed, ok := cmd().(suggestionFailedMsg)
+	if !ok {
+		t.Fatal("want suggestionFailedMsg")
+	}
+	updated, _ := model.Update(failed)
+	m := updated.(studioModel)
+	if !strings.Contains(m.View(), "HTTP status 503") {
+		t.Errorf("view = %q, want upstream status", m.View())
+	}
+}
+
+// TestStudioModel_CancelledContextYieldsFailure proves an aborted request
+// ends as a normal failure message with no candidate.
+func TestStudioModel_CancelledContextYieldsFailure(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "pattern.fnl")
+	if err := os.WriteFile(source, []byte(validProposalSource), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deps := studioSuggestDeps(t, dir, fakeStudioModel{
+		proposal: suggest.Proposal{Summary: "late", Source: validProposalSource},
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var model tea.Model = newStudioModel("pattern.fnl")
+	cmd := model.(studioModel).suggestWithCtx(ctx, studioTestServices(deps, dir), source, "x")
+	if _, ok := cmd().(suggestionFailedMsg); !ok {
+		t.Fatal("cancelled request did not yield suggestionFailedMsg")
 	}
 }
