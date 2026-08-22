@@ -22,6 +22,18 @@ Or without installing:
 Edit the `.fnl` file and save while it's playing — the change takes effect
 at the next bar. Ctrl-C to stop.
 
+### Studio cockpit
+
+    basso studio patterns/basic-groove.fnl
+
+A full-screen cockpit over playback: a live bar/BPM/steps status line, a
+capped log of reload events, and the AI candidate loop in one place. Press
+`s` to describe a change, watch validation, read the diff, then `a` to apply
+(through the same transactional backup path as `basso apply`) or `r` to
+reject. `esc` cancels an in-flight request without stopping playback; `q`
+stops playback and quits. It accepts the suggestion flags below — provider
+setup is only needed when you first press `s`.
+
 ### Develop
 
     make build   # bin/basso
