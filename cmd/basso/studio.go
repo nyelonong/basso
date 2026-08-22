@@ -299,7 +299,7 @@ func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.mode = studioIdle
-		m.lastError = msg.err.Error()
+		m.lastError = compactDiagnostic(msg.err.Error())
 	}
 	return m, nil
 }
@@ -736,4 +736,27 @@ func runStudioCommand(ctx context.Context, args []string, deps commandDependenci
 	}
 	cancel()
 	return <-done
+}
+
+// compactDiagnostic strips fennel/engine stack-trace frames from failure
+// text, keeping the semantic lines the player can act on.
+func compactDiagnostic(message string) string {
+	var kept []string
+	for _, line := range strings.Split(message, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" ||
+			strings.Contains(trimmed, "stack traceback") ||
+			strings.Contains(trimmed, "in function ") ||
+			strings.Contains(trimmed, "(tailcall)") ||
+			strings.HasPrefix(trimmed, "<string>:") ||
+			strings.HasPrefix(trimmed, "[G]:") {
+			continue
+		}
+		kept = append(kept, trimmed)
+	}
+	out := strings.Join(kept, "\n")
+	if len(out) > 400 {
+		out = out[:397] + "..."
+	}
+	return out
 }

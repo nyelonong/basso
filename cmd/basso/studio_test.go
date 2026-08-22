@@ -707,3 +707,28 @@ func TestRunStudioCommand_ParsesFlagsBeforeFile(t *testing.T) {
 		t.Errorf("provider path = %q, want pattern.fnl", gotPath)
 	}
 }
+
+// TestCompactDiagnostic_DropsTracebackNoise proves engine/fennel stack traces
+// collapse to their semantic lines while preserving both failure phases.
+func TestCompactDiagnostic_DropsTracebackNoise(t *testing.T) {
+	raw := "first local preflight: fennel: compile bar 0: compile source: unknown:7:0: Compile error: local length was overshadowed\n* Try renaming local length.\nstack traceback:\n    [G]: in function 'error'\n    <string>:4285: in function 'assert-compile'\n    (tailcall): ?\n    [G]: ?\nrepaired local preflight: fennel: validate bar 0: engine: hit 39 note \"40\" is invalid"
+
+	got := compactDiagnostic(raw)
+	for _, want := range []string{
+		"local length was overshadowed",
+		"* Try renaming local length.",
+		`note "40" is invalid`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("compactDiagnostic = %q, want %q kept", got, want)
+		}
+	}
+	if strings.Contains(got, "traceback") || strings.Contains(got, "assert-compile") || strings.Contains(got, "[G]") {
+		t.Errorf("compactDiagnostic kept traceback noise: %q", got)
+	}
+
+	single := compactDiagnostic("openai-compatible: unexpected HTTP status 503")
+	if single != "openai-compatible: unexpected HTTP status 503" {
+		t.Errorf("compactDiagnostic changed a clean message: %q", single)
+	}
+}

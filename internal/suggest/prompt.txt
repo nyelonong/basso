@@ -12,6 +12,13 @@ a vector of hit tables. A sample hit has `:step` and `:sample`; a note hit has
 `:step`, `:note`, `:length`, and optional `:instrument` (`bass`, `brass`, or
 `pluck`). Hits may also set `:pan` and `:velocity`.
 
+## Fennel pitfalls
+
+Never name a local after a built-in form or macro: `length`, `values`, `set`,
+`tset`, `each`, `when`, `match`, `partial` are reserved — use names like
+`len` instead. Note hits take scientific pitch only: `:note "C2"`, `"A#1"`,
+`"G3"` — never bare numbers like "40".
+
 ## Requirements
 
 Preserve existing musical material unless the user asks to remove it. Use only
