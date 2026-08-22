@@ -231,7 +231,9 @@ func TestRun_ObservesBarsAndDiagnostics(t *testing.T) {
 
 	var bars []string
 	observers := playbackObservers{
-		onBar:        func(bar, bpm, stepsPerBar int) { bars = append(bars, fmt.Sprintf("%d/%d/%d", bar, bpm, stepsPerBar)) },
+		onBar: func(bar, bpm, stepsPerBar int, _ []engine.Hit) {
+			bars = append(bars, fmt.Sprintf("%d/%d/%d", bar, bpm, stepsPerBar))
+		},
 		onDiagnostic: func(d engine.Diagnostic) { reported <- d },
 	}
 	err := run(context.Background(), []string{"pattern.fnl"}, observers, newProvider, newFakeSink)

@@ -589,3 +589,38 @@ func TestStudioModel_ApplyFailureSurfaces(t *testing.T) {
 		t.Error("failed apply still modified the source")
 	}
 }
+
+// TestStudioModel_TimelineRendersHits proves barMsg hits become a velocity
+// shaded step strip: full-velocity kick shows the top ramp rune.
+func TestStudioModel_TimelineRendersHits(t *testing.T) {
+	var model tea.Model = newStudioModel("pattern.fnl")
+	hits := []engine.Hit{
+		{Step: 0, Sample: "kick2.wav", Velocity: 1.0},
+		{Step: 4, Sample: "snare.wav", Velocity: 0.5},
+	}
+	model, _ = model.Update(barMsg{bar: 2, bpm: 130, stepsPerBar: 16, hits: hits})
+	view := model.(studioModel).View()
+	if !strings.Contains(view, "█") {
+		t.Errorf("view = %q, want full-velocity cell", view)
+	}
+	if !strings.Contains(view, "▄") {
+		t.Errorf("view = %q, want mid-velocity cell", view)
+	}
+}
+
+// TestStudioModel_PulseDecaysAfterBar proves the beat pulse flashes at the
+// boundary and decays toward idle without retriggering forever.
+func TestStudioModel_PulseDecaysAfterBar(t *testing.T) {
+	m := newStudioModel("pattern.fnl")
+	model, cmd := m.Update(barMsg{bar: 0, bpm: 130, stepsPerBar: 16})
+	live := model.(studioModel)
+	if live.pulseLevel != 1.0 || cmd == nil {
+		t.Fatalf("pulseLevel=%v cmd=%v, want flash with decay scheduled", live.pulseLevel, cmd)
+	}
+	for i := 0; i < 3; i++ {
+		model, _ = model.Update(pulseDecayMsg{})
+	}
+	if got := model.(studioModel).pulseLevel; got > 0 {
+		t.Errorf("pulseLevel = %v, want decayed to zero", got)
+	}
+}

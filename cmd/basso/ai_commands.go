@@ -120,7 +120,7 @@ func runCommand(ctx context.Context, args []string, deps commandDependencies) er
 		}
 	}
 	return run(ctx, args, playbackObservers{
-		onBar: func(bar, bpm, stepsPerBar int) {
+		onBar: func(bar, bpm, stepsPerBar int, _ []engine.Hit) {
 			fmt.Fprintf(deps.stdout, "bar %d bpm %d\n", bar, bpm)
 		},
 		onDiagnostic: stderrDiagnosticReporter(deps.stderr),

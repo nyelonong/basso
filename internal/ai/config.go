@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	defaultTimeout   = 60 * time.Second
+	defaultTimeout   = 180 * time.Second
 	defaultOllamaURL = "http://127.0.0.1:11434"
 )
 

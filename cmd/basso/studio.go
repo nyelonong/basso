@@ -11,9 +11,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/nyelonong/basso/internal/ai"
 	"github.com/nyelonong/basso/internal/engine"
 	"github.com/nyelonong/basso/internal/suggest"
@@ -24,6 +27,7 @@ type barMsg struct {
 	bar         int
 	bpm         int
 	stepsPerBar int
+	hits        []engine.Hit
 }
 
 type diagnosticMsg struct {
@@ -78,6 +82,10 @@ func (deps commandDependencies) studioServices(overrides ai.Overrides, soundsPat
 	}
 }
 
+type pulseDecayMsg struct{}
+
+type secondTickMsg struct{}
+
 type studioMode int
 
 const (
@@ -107,6 +115,12 @@ type studioModel struct {
 	sourcePath     string
 	services       studioServices
 	store          *suggest.Store
+
+	lastHits   []engine.Hit
+	pulseLevel float64
+	startedAt  time.Time
+	elapsed    time.Duration
+	spinner    spinner.Model
 }
 
 // maxStudioEvents caps the on-screen event log; older reload diagnostics
@@ -114,10 +128,24 @@ type studioModel struct {
 const maxStudioEvents = 8
 
 func newStudioModel(sourceName string) studioModel {
-	return studioModel{sourceName: sourceName}
+	return studioModel{
+		sourceName: sourceName,
+		startedAt:  time.Now(),
+		spinner:    spinner.New(spinner.WithSpinner(spinner.Meter)),
+	}
 }
 
-func (m studioModel) Init() tea.Cmd { return nil }
+func (m studioModel) Init() tea.Cmd {
+	return tea.Batch(m.spinner.Tick, secondTick())
+}
+
+func secondTick() tea.Cmd {
+	return tea.Tick(time.Second, func(time.Time) tea.Msg { return secondTickMsg{} })
+}
+
+func pulseDecay() tea.Cmd {
+	return tea.Tick(140*time.Millisecond, func(time.Time) tea.Msg { return pulseDecayMsg{} })
+}
 
 func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -215,6 +243,21 @@ func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.bar = msg.bar
 		m.bpm = msg.bpm
 		m.stepsPerBar = msg.stepsPerBar
+		m.lastHits = msg.hits
+		m.pulseLevel = 1.0
+		return m, pulseDecay()
+	case pulseDecayMsg:
+		if m.pulseLevel > 0 {
+			m.pulseLevel -= 0.4
+			return m, pulseDecay()
+		}
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+	case secondTickMsg:
+		m.elapsed = time.Since(m.startedAt).Truncate(time.Second)
+		return m, secondTick()
 	case diagnosticMsg:
 		m.diagnosticsObserved++
 		m.events = append(m.events, formatStudioEvent(msg.diagnostic))
@@ -267,7 +310,12 @@ func (m studioModel) View() string {
 	if !m.played {
 		out.WriteString("waiting for first bar…\n")
 	} else {
-		out.WriteString(fmt.Sprintf("bar %d bpm %d steps %d\n", m.bar, m.bpm, m.stepsPerBar))
+		out.WriteString(pulseGlyph(m.pulseLevel) + " " +
+			fmt.Sprintf("bar %d bpm %d steps %d", m.bar, m.bpm, m.stepsPerBar) + "\n")
+		out.WriteString(renderTimeline(m.lastHits, m.stepsPerBar) + "\n")
+	}
+	if m.elapsed > 0 || m.played {
+		out.WriteString(fmt.Sprintf("up %s\n", m.elapsed))
 	}
 	if m.playbackErr != "" {
 		out.WriteString("playback stopped: " + m.playbackErr + "\n")
@@ -282,7 +330,7 @@ func (m studioModel) View() string {
 	case studioPrompting:
 		out.WriteString("\nsuggest: " + m.prompt.View() + "\nenter send · esc back\n")
 	case studioRunning:
-		out.WriteString("\nsuggest: consulting provider… (esc cancel)\n")
+		out.WriteString("\nsuggest: " + m.spinner.View() + " consulting provider… (esc cancel)\n")
 	}
 	if m.lastError != "" {
 		out.WriteString("suggest failed: " + m.lastError + "\n")
@@ -296,6 +344,105 @@ func (m studioModel) View() string {
 		}
 	}
 	out.WriteString("\nq quit · s suggest · a apply · r reject\n")
+	return out.String()
+}
+
+// pulseGlyph flashes with each bar boundary and decays until the next one.
+func pulseGlyph(level float64) string {
+	switch {
+	case level >= 1.0:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#50fa7b")).Render("●●")
+	case level >= 0.6:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#50fa7b")).Render("●○")
+	case level > 0:
+		return lipgloss.NewStyle().Faint(true).Render("○○")
+	default:
+		return lipgloss.NewStyle().Faint(true).Render("··")
+	}
+}
+
+// timelineRamp shades a step by its hit velocity.
+const timelineRamp = "·▁▂▃▄▅▆▇█"
+
+var timelineColors = map[string]lipgloss.Color{
+	"kick":    lipgloss.Color("#ff5555"),
+	"snare":   lipgloss.Color("#f1fa8c"),
+	"clap":    lipgloss.Color("#ffb86c"),
+	"hat":     lipgloss.Color("#8be9fd"),
+	"perc":    lipgloss.Color("#ff79c6"),
+	"crash":   lipgloss.Color("#bd93f9"),
+	"note":    lipgloss.Color("#50fa7b"),
+	"unknown": lipgloss.Color("#888785"),
+}
+
+// sampleClass buckets a hit's sound for coloring.
+func sampleClass(hit engine.Hit) string {
+	name := strings.ToLower(hit.Sample)
+	switch {
+	case hit.Note != "":
+		if hit.Instrument != "" {
+			return "note"
+		}
+		return "note"
+	case strings.Contains(name, "kick"):
+		return "kick"
+	case strings.Contains(name, "snare"):
+		return "snare"
+	case strings.Contains(name, "clap"):
+		return "clap"
+	case strings.Contains(name, "hat"):
+		return "hat"
+	case strings.Contains(name, "crash"), strings.Contains(name, "cymbal"), strings.Contains(name, "ride"):
+		return "crash"
+	case strings.Contains(name, "cowbell"), strings.Contains(name, "conga"),
+		strings.Contains(name, "tom"), strings.Contains(name, "clave"), strings.Contains(name, "tamb"):
+		return "perc"
+	default:
+		return "unknown"
+	}
+}
+
+// renderTimeline draws the current bar as one cell per step: velocity-shaded
+// ramp runes in the dominant hit's color; empty steps stay faint dots.
+func renderTimeline(hits []engine.Hit, steps int) string {
+	if steps <= 0 || steps > 256 {
+		steps = 16
+	}
+	type cell struct {
+		velocity float64
+		class    string
+	}
+	cells := make([]cell, steps)
+	for _, hit := range hits {
+		if hit.Step < 0 || hit.Step >= steps {
+			continue
+		}
+		velocity := hit.Velocity
+		if velocity <= 0 {
+			velocity = 0.6 // defaulted hits play audibly even when unset upstream
+		}
+		if velocity > cells[hit.Step].velocity {
+			cells[hit.Step] = cell{velocity: velocity, class: sampleClass(hit)}
+		}
+	}
+
+	ramp := []rune(timelineRamp)
+	var out strings.Builder
+	for i := range cells {
+		if cells[i].velocity == 0 {
+			out.WriteString(lipgloss.NewStyle().Faint(true).Render(string(ramp[0])))
+			continue
+		}
+		idx := int(cells[i].velocity * float64(len(ramp)-1))
+		if idx < 1 {
+			idx = 1
+		}
+		if idx >= len(ramp) {
+			idx = len(ramp) - 1
+		}
+		style := lipgloss.NewStyle().Foreground(timelineColors[cells[i].class])
+		out.WriteString(style.Render(string(ramp[idx])))
+	}
 	return out.String()
 }
 
@@ -464,8 +611,8 @@ func runStudioCommand(ctx context.Context, args []string, deps commandDependenci
 	program := deps.newStudioProgram(model, tea.WithAltScreen())
 
 	observers := playbackObservers{
-		onBar: func(bar, bpm, stepsPerBar int) {
-			program.Send(barMsg{bar: bar, bpm: bpm, stepsPerBar: stepsPerBar})
+		onBar: func(bar, bpm, stepsPerBar int, hits []engine.Hit) {
+			program.Send(barMsg{bar: bar, bpm: bpm, stepsPerBar: stepsPerBar, hits: hits})
 		},
 		onDiagnostic: func(diagnostic engine.Diagnostic) {
 			program.Send(diagnosticMsg{diagnostic: diagnostic})

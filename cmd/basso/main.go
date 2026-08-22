@@ -75,7 +75,7 @@ func newBeepSink() engine.AudioSink {
 // diagnostic as reported. Nil fields are skipped. Both callbacks run on the
 // engine's single goroutine; implementations must not block it.
 type playbackObservers struct {
-	onBar        func(bar, bpm, stepsPerBar int)
+	onBar        func(bar, bpm, stepsPerBar int, hits []engine.Hit)
 	onDiagnostic engine.DiagnosticReporter
 }
 
@@ -85,13 +85,13 @@ type playbackObservers struct {
 // needs no synchronization.
 type observingProvider struct {
 	engine.PatternProvider
-	onBar func(bar, bpm, stepsPerBar int)
+	onBar func(bar, bpm, stepsPerBar int, hits []engine.Hit)
 }
 
 func (p *observingProvider) Next(bar int) ([]engine.Hit, int, int, error) {
 	hits, bpm, stepsPerBar, err := p.PatternProvider.Next(bar)
 	if err == nil && p.onBar != nil {
-		p.onBar(bar, bpm, stepsPerBar)
+		p.onBar(bar, bpm, stepsPerBar, hits)
 	}
 	return hits, bpm, stepsPerBar, err
 }

@@ -179,8 +179,8 @@ func TestResolveConfig_DefaultsTimeoutAndOllamaURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveConfig() error = %v", err)
 	}
-	if config.Timeout != 60*time.Second {
-		t.Errorf("Timeout = %v, want %v", config.Timeout, 60*time.Second)
+	if config.Timeout != 180*time.Second {
+		t.Errorf("Timeout = %v, want %v", config.Timeout, 180*time.Second)
 	}
 	if config.OllamaURL == nil {
 		t.Fatal("OllamaURL = nil")
