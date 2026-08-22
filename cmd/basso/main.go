@@ -33,12 +33,18 @@ type providerConstructor func(path string, onDiagnostic engine.DiagnosticReporte
 // newFennelProvider adapts engine.FennelProvider.NewFromFile to
 // providerConstructor's signature.
 func newFennelProvider(path string, onDiagnostic engine.DiagnosticReporter) (closablePatternProvider, error) {
-	inventory, err := engine.LoadSoundInventory("sound/808")
-	if err != nil {
-		return nil, err
+	return newFennelProviderForSounds("sound/808")(path, onDiagnostic)
+}
+
+func newFennelProviderForSounds(soundsPath string) providerConstructor {
+	return func(path string, onDiagnostic engine.DiagnosticReporter) (closablePatternProvider, error) {
+		inventory, err := engine.LoadSoundInventory(soundsPath)
+		if err != nil {
+			return nil, err
+		}
+		evaluator := engine.NewEvaluator(inventory, 250*time.Millisecond)
+		return engine.NewFromFile(path, evaluator, onDiagnostic)
 	}
-	evaluator := engine.NewEvaluator(inventory, 250*time.Millisecond)
-	return engine.NewFromFile(path, evaluator, onDiagnostic)
 }
 
 func stderrDiagnosticReporter(stderr io.Writer) engine.DiagnosticReporter {

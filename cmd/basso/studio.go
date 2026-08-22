@@ -1,6 +1,4 @@
-// basso studio: a full-screen cockpit over playback — live bar/BPM/steps
-// status plus the AI candidate review loop. Playback reuses the exact play
-// machinery; the UI only observes it.
+// basso studio provides pattern picking, transport, and AI candidate audition.
 package main
 
 import (
@@ -151,7 +149,11 @@ func newStudioModel(sourceName string) studioModel {
 }
 
 func (m studioModel) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, secondTick())
+	commands := []tea.Cmd{m.spinner.Tick, secondTick()}
+	if m.mode == studioPrompting {
+		commands = append(commands, textinput.Blink)
+	}
+	return tea.Batch(commands...)
 }
 
 func secondTick() tea.Cmd {
@@ -798,20 +800,56 @@ func parseStudioFlags(args []string) (studioFlags, error) {
 	if err := flags.Parse(args); err != nil {
 		return parsed, fmt.Errorf("studio flags: %w", err)
 	}
-	if len(flags.Args()) != 1 {
-		return parsed, errors.New("usage: basso studio [flags] <source.fnl>")
+	if len(flags.Args()) > 1 {
+		return parsed, errors.New("usage: basso studio [flags] [source.fnl]")
 	}
-	parsed.source = flags.Args()[0]
+	if len(flags.Args()) == 1 {
+		parsed.source = flags.Args()[0]
+	}
 	return parsed, nil
 }
 
-// runStudioCommand plays the source exactly like play, feeding the cockpit
-// from the observer seam; quitting the UI stops playback.
 func runStudioCommand(ctx context.Context, args []string, deps commandDependencies) error {
 	flags, err := parseStudioFlags(args)
 	if err != nil {
 		return err
 	}
+	promptAfterCreate := false
+	if flags.source == "" {
+		result, err := runStudioPicker(deps)
+		if err != nil {
+			return err
+		}
+		if result.quit {
+			return nil
+		}
+		flags.source = result.path
+		promptAfterCreate = result.promptAfterCreate
+	}
+	return runStudioSession(ctx, flags, deps, promptAfterCreate)
+}
+
+func runStudioPicker(deps commandDependencies) (studioPickerResult, error) {
+	model, err := newStudioPickerModel(deps.invocationDir)
+	if err != nil {
+		return studioPickerResult{}, err
+	}
+	program := deps.newStudioProgram(model, tea.WithAltScreen())
+	finalModel, err := program.Run()
+	if err != nil {
+		return studioPickerResult{}, err
+	}
+	picker, ok := finalModel.(studioPickerModel)
+	if !ok {
+		return studioPickerResult{}, fmt.Errorf("studio picker returned %T", finalModel)
+	}
+	if !picker.result.quit && picker.result.path == "" {
+		return studioPickerResult{}, errors.New("studio picker ended without a selection")
+	}
+	return picker.result, nil
+}
+
+func runStudioSession(ctx context.Context, flags studioFlags, deps commandDependencies, promptAfterCreate bool) error {
 	path, err := absoluteFrom(deps.invocationDir, flags.source)
 	if err != nil {
 		return fmt.Errorf("resolve source path: %w", err)
@@ -837,11 +875,15 @@ func runStudioCommand(ctx context.Context, args []string, deps commandDependenci
 			send(diagnosticMsg{diagnostic: diagnostic})
 		},
 	}
+	newProvider := deps.newProvider
+	if deps.newStudioProvider != nil {
+		newProvider = deps.newStudioProvider(soundsPath)
+	}
 	transport, err := newStudioTransport(
 		sessionCtx,
 		path,
 		observers,
-		deps.newProvider,
+		newProvider,
 		deps.newSink,
 		func(err error) { send(playbackDoneMsg{err: err}) },
 	)
@@ -860,6 +902,10 @@ func runStudioCommand(ctx context.Context, args []string, deps commandDependenci
 	}, soundsPath)
 	model.transport = transport
 	model.transportState = transportPlaying
+	if promptAfterCreate {
+		updated, _ := model.Update(suggestPromptMsg{})
+		model = updated.(studioModel)
+	}
 	program := deps.newStudioProgram(model, tea.WithAltScreen())
 
 	forwardDone := make(chan struct{})

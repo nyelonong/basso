@@ -24,15 +24,20 @@ at the next bar. Ctrl-C to stop.
 
 ### Studio cockpit
 
+    basso studio
     basso studio patterns/basic-groove.fnl
 
-A full-screen cockpit over playback: a live bar/BPM/steps status line, a
-capped log of reload events, and the AI candidate loop in one place. Press
-`s` to describe a change, watch validation, read the diff, then `a` to apply
-(through the same transactional backup path as `basso apply`) or `r` to
-reject. `esc` cancels an in-flight request without stopping playback; `q`
-stops playback and quits. It accepts the suggestion flags below — provider
-setup is only needed when you first press `s`.
+Without a file, studio opens a flat picker for `.fnl` files in the launch
+directory. Press `n` for a silent blank pattern or `N` to create one and open
+the AI prompt immediately. During playback, `space` pauses/resumes at a bar
+boundary, `x` stops and resets to bar 0, and `p` plays again.
+
+Press `s` to describe an edit. After local validation, studio automatically
+auditions the candidate at the next bar while leaving the real file untouched.
+Press `a` to promote it through the transactional backup path or `r` to return
+to the real file and delete it. `esc` cancels an in-flight request; `q` discards
+an armed candidate, stops playback, and quits. Provider setup is only needed
+when you use an AI prompt.
 
 ### Develop
 
@@ -45,8 +50,8 @@ setup is only needed when you first press `s`.
 ### AI suggestions
 
 Playback stays entirely local and offline. Basso makes a provider request only
-when you explicitly run `basso suggest`; `play` and hot reload never need
-network access.
+when you explicitly run `basso suggest` or submit a studio prompt; `play` and
+hot reload never need network access.
 
 Before running a suggestion, choose and configure a provider and model. No
 model is selected by default:

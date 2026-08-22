@@ -57,7 +57,7 @@ func TestHelpCommand_ListsStudio(t *testing.T) {
 	if err := writeTopLevelHelp(&stdout); err != nil {
 		t.Fatalf("writeTopLevelHelp() error = %v", err)
 	}
-	if !strings.Contains(stdout.String(), "basso studio <source.fnl>") {
+	if !strings.Contains(stdout.String(), "basso studio [source.fnl]") {
 		t.Errorf("help = %q, want basso studio usage line", stdout.String())
 	}
 }
@@ -180,23 +180,95 @@ func TestRunStudioCommand_QuitDiscardsArmedCandidate(t *testing.T) {
 	}
 }
 
-// TestRunStudioCommand_RequiresOneFile verifies argument validation matches
-// play's contract before any UI or audio is created.
-func TestRunStudioCommand_RequiresOneFile(t *testing.T) {
-	deps := testCommandDependencies(t.TempDir(), io.Discard, io.Discard)
-	called := false
-	deps.newProvider = func(string, engine.DiagnosticReporter) (closablePatternProvider, error) {
-		called = true
-		return nil, nil
+func TestRunStudioCommand_NoFilePicksAndPlays(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.fnl")
+	if err := os.WriteFile(path, []byte(blankPatternSource), 0o600); err != nil {
+		t.Fatal(err)
 	}
-
-	for _, args := range [][]string{{}, {"a.fnl", "b.fnl"}} {
-		if err := runStudioCommand(context.Background(), args, deps); err == nil {
-			t.Errorf("runStudioCommand(%v) error = nil, want error", args)
+	deps := testCommandDependencies(dir, io.Discard, io.Discard)
+	var providerPath string
+	deps.newProvider = func(path string, _ engine.DiagnosticReporter) (closablePatternProvider, error) {
+		providerPath = path
+		return &countingProvider{stops: 2, stopErr: errors.New("stop")}, nil
+	}
+	deps.newSink = newFakeSink
+	deps.newStudioProgram = func(model tea.Model, _ ...tea.ProgramOption) programRunner {
+		switch model := model.(type) {
+		case studioPickerModel:
+			selected, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+			return fixedStudioProgram{model: selected}
+		case studioModel:
+			return fixedStudioProgram{model: model}
+		default:
+			t.Fatalf("unexpected studio model %T", model)
+			return nil
 		}
 	}
-	if called {
-		t.Error("provider constructor was called for invalid args")
+
+	if err := runStudioCommand(context.Background(), nil, deps); err != nil {
+		t.Fatalf("runStudioCommand() error = %v", err)
+	}
+	if providerPath != path {
+		t.Fatalf("provider path = %q, want picked %q", providerPath, path)
+	}
+}
+
+func TestRunStudioCommand_NewPromptStartsPrompting(t *testing.T) {
+	dir := t.TempDir()
+	deps := testCommandDependencies(dir, io.Discard, io.Discard)
+	deps.newProvider = func(string, engine.DiagnosticReporter) (closablePatternProvider, error) {
+		return &countingProvider{stops: 2, stopErr: errors.New("stop")}, nil
+	}
+	deps.newSink = newFakeSink
+	deps.newStudioProgram = func(model tea.Model, _ ...tea.ProgramOption) programRunner {
+		switch model := model.(type) {
+		case studioPickerModel:
+			updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'N'}})
+			updated, _ = updated.(studioPickerModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("generated")})
+			updated, _ = updated.(studioPickerModel).Update(tea.KeyMsg{Type: tea.KeyEnter})
+			return fixedStudioProgram{model: updated}
+		case studioModel:
+			if model.mode != studioPrompting {
+				t.Errorf("new-from-prompt studio mode = %v, want prompting", model.mode)
+			}
+			return fixedStudioProgram{model: model}
+		default:
+			t.Fatalf("unexpected studio model %T", model)
+			return nil
+		}
+	}
+
+	if err := runStudioCommand(context.Background(), nil, deps); err != nil {
+		t.Fatalf("runStudioCommand() error = %v", err)
+	}
+}
+
+func TestRunStudioCommand_PickerQuitSkipsPlayback(t *testing.T) {
+	deps := testCommandDependencies(t.TempDir(), io.Discard, io.Discard)
+	providerCalled := false
+	deps.newProvider = func(string, engine.DiagnosticReporter) (closablePatternProvider, error) {
+		providerCalled = true
+		return nil, nil
+	}
+	deps.newStudioProgram = func(model tea.Model, _ ...tea.ProgramOption) programRunner {
+		picker := model.(studioPickerModel)
+		quit, _ := picker.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+		return fixedStudioProgram{model: quit}
+	}
+
+	if err := runStudioCommand(context.Background(), nil, deps); err != nil {
+		t.Fatalf("runStudioCommand() error = %v", err)
+	}
+	if providerCalled {
+		t.Fatal("picker quit constructed playback provider")
+	}
+}
+
+func TestRunStudioCommand_RejectsMultipleFiles(t *testing.T) {
+	deps := testCommandDependencies(t.TempDir(), io.Discard, io.Discard)
+	if err := runStudioCommand(context.Background(), []string{"a.fnl", "b.fnl"}, deps); err == nil {
+		t.Fatal("runStudioCommand() error = nil, want argument error")
 	}
 }
 
@@ -874,6 +946,27 @@ func TestHighlightDiff(t *testing.T) {
 
 // TestRunStudioCommand_ParsesFlagsBeforeFile proves flag arguments no longer
 // trip play's positional parsing.
+func TestRunStudioCommand_UsesResolvedSoundsForPlayback(t *testing.T) {
+	dir := t.TempDir()
+	deps := testCommandDependencies(dir, io.Discard, io.Discard)
+	var gotSounds string
+	deps.newStudioProvider = func(soundsPath string) providerConstructor {
+		gotSounds = soundsPath
+		return func(string, engine.DiagnosticReporter) (closablePatternProvider, error) {
+			return &countingProvider{stops: 2, stopErr: errors.New("stop")}, nil
+		}
+	}
+	deps.newSink = newFakeSink
+	deps.newStudioProgram = newHeadlessProgram("q")
+
+	if err := runStudioCommand(context.Background(), []string{"--sounds", "kits", "pattern.fnl"}, deps); err != nil {
+		t.Fatalf("runStudioCommand() error = %v", err)
+	}
+	if want := filepath.Join(dir, "kits"); gotSounds != want {
+		t.Fatalf("studio sounds path = %q, want %q", gotSounds, want)
+	}
+}
+
 func TestRunStudioCommand_ParsesFlagsBeforeFile(t *testing.T) {
 	var gotPath string
 	stopErr := errors.New("stop")

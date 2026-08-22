@@ -47,7 +47,7 @@ func TestHelpCommand_ListsAllCommandsAndConfiguration(t *testing.T) {
 Usage:
   basso play <source.fnl>                        Play and hot-reload a pattern.
   basso <source.fnl>                             Alias for basso play.
-  basso studio <source.fnl>                      Cockpit UI: live status plus AI candidate review (accepts suggestion flags).
+  basso studio [source.fnl]                      Pick/create a pattern, control playback, and audition AI edits.
   basso suggest [flags] <source.fnl> <prompt>    Create and review a candidate.
   basso apply <candidate-id>                     Apply a validated candidate.
   basso help                                     Show this help.

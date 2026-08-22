@@ -31,7 +31,7 @@ const topLevelHelp = `Basso plays Fennel patterns and manages reviewable AI sugg
 Usage:
   basso play <source.fnl>                        Play and hot-reload a pattern.
   basso <source.fnl>                             Alias for basso play.
-  basso studio <source.fnl>                      Cockpit UI: live status plus AI candidate review (accepts suggestion flags).
+  basso studio [source.fnl]                      Pick/create a pattern, control playback, and audition AI edits.
   basso suggest [flags] <source.fnl> <prompt>    Create and review a candidate.
   basso apply <candidate-id>                     Apply a validated candidate.
   basso help                                     Show this help.
@@ -70,17 +70,18 @@ func newTeaProgram(model tea.Model, opts ...tea.ProgramOption) programRunner {
 }
 
 type commandDependencies struct {
-	stdout           io.Writer
-	stderr           io.Writer
-	getenv           func(string) string
-	now              func() time.Time
-	invocationDir    string
-	storeRoot        string
-	newModel         modelFactory
-	newPreflighter   suggest.PreflighterFactory
-	newProvider      providerConstructor
-	newSink          func() engine.AudioSink
-	newStudioProgram func(model tea.Model, opts ...tea.ProgramOption) programRunner
+	stdout            io.Writer
+	stderr            io.Writer
+	getenv            func(string) string
+	now               func() time.Time
+	invocationDir     string
+	storeRoot         string
+	newModel          modelFactory
+	newPreflighter    suggest.PreflighterFactory
+	newProvider       providerConstructor
+	newStudioProvider func(string) providerConstructor
+	newSink           func() engine.AudioSink
+	newStudioProgram  func(model tea.Model, opts ...tea.ProgramOption) programRunner
 }
 
 func defaultCommandDependencies(stdout, stderr io.Writer) (commandDependencies, error) {
@@ -89,16 +90,17 @@ func defaultCommandDependencies(stdout, stderr io.Writer) (commandDependencies, 
 		return commandDependencies{}, fmt.Errorf("resolve invocation directory: %w", err)
 	}
 	return commandDependencies{
-		stdout:         stdout,
-		stderr:         stderr,
-		getenv:         getenvWithFile(os.Getenv, loadEnvFile(filepath.Join(invocationDir, ".env"))),
-		now:            time.Now,
-		invocationDir:  invocationDir,
-		storeRoot:      filepath.Join(invocationDir, ".basso"),
-		newModel:       newConcreteModel,
-		newPreflighter: newEvaluatorPreflighter,
-		newProvider:    newFennelProvider,
-		newSink:        newBeepSink,
+		stdout:            stdout,
+		stderr:            stderr,
+		getenv:            getenvWithFile(os.Getenv, loadEnvFile(filepath.Join(invocationDir, ".env"))),
+		now:               time.Now,
+		invocationDir:     invocationDir,
+		storeRoot:         filepath.Join(invocationDir, ".basso"),
+		newModel:          newConcreteModel,
+		newPreflighter:    newEvaluatorPreflighter,
+		newProvider:       newFennelProvider,
+		newStudioProvider: newFennelProviderForSounds,
+		newSink:           newBeepSink,
 	}, nil
 }
 
