@@ -2,7 +2,7 @@
 
 Implements `docs/specs/2026-08-22-studio-tui.md`.
 
-next: Task 1
+next: Task 2
 
 ## Architecture
 

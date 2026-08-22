@@ -121,18 +121,21 @@ func resolveFile(args []string) (string, error) {
 	}
 }
 
-// run is main()'s testable core: it resolves args to a file path,
-// constructs a provider via newProvider with observers.onDiagnostic, wraps
-// it to forward bar progress to observers.onBar, and plays it through an
-// Engine backed by newSink until ctx is cancelled or the provider errors.
-// Tests call it with stub newProvider and newSink, so no real file,
-// watcher, or audio device is touched.
+// run is main()'s testable core: it resolves args to a file path and plays
+// it through an Engine until ctx is cancelled or the provider errors,
+// forwarding events to observers.
 func run(ctx context.Context, args []string, observers playbackObservers, newProvider providerConstructor, newSink func() engine.AudioSink) error {
 	path, err := resolveFile(args)
 	if err != nil {
 		return err
 	}
+	return playSource(ctx, path, observers, newProvider, newSink)
+}
 
+// playSource plays one resolved source path until ctx is cancelled or the
+// provider errors, forwarding bar progress and diagnostics to observers. It
+// owns no argument parsing.
+func playSource(ctx context.Context, path string, observers playbackObservers, newProvider providerConstructor, newSink func() engine.AudioSink) error {
 	diagnostics := observers.onDiagnostic
 	if diagnostics == nil {
 		diagnostics = func(engine.Diagnostic) {}

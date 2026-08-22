@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbletea"
 	"github.com/nyelonong/basso/internal/ai"
 	"github.com/nyelonong/basso/internal/engine"
 	"github.com/nyelonong/basso/internal/suggest"
@@ -30,6 +31,7 @@ const topLevelHelp = `Basso plays Fennel patterns and manages reviewable AI sugg
 Usage:
   basso play <source.fnl>                        Play and hot-reload a pattern.
   basso <source.fnl>                             Alias for basso play.
+  basso studio <source.fnl>                      Cockpit UI: live status plus AI candidate review (accepts suggestion flags).
   basso suggest [flags] <source.fnl> <prompt>    Create and review a candidate.
   basso apply <candidate-id>                     Apply a validated candidate.
   basso help                                     Show this help.
@@ -54,17 +56,31 @@ Provider environment:
 
 type modelFactory func(ai.Config) (suggest.Model, error)
 
+// programRunner is the slice of tea.Program studio needs: block on Run
+// until the model quits, and Send messages from playback goroutines.
+type programRunner interface {
+	Run() (tea.Model, error)
+	Send(msg tea.Msg)
+}
+
+// newTeaProgram is the production program factory; tests swap in a headless
+// one.
+func newTeaProgram(model tea.Model, opts ...tea.ProgramOption) programRunner {
+	return tea.NewProgram(model, opts...)
+}
+
 type commandDependencies struct {
-	stdout         io.Writer
-	stderr         io.Writer
-	getenv         func(string) string
-	now            func() time.Time
-	invocationDir  string
-	storeRoot      string
-	newModel       modelFactory
-	newPreflighter suggest.PreflighterFactory
-	newProvider    providerConstructor
-	newSink        func() engine.AudioSink
+	stdout           io.Writer
+	stderr           io.Writer
+	getenv           func(string) string
+	now              func() time.Time
+	invocationDir    string
+	storeRoot        string
+	newModel         modelFactory
+	newPreflighter   suggest.PreflighterFactory
+	newProvider      providerConstructor
+	newSink          func() engine.AudioSink
+	newStudioProgram func(model tea.Model, opts ...tea.ProgramOption) programRunner
 }
 
 func defaultCommandDependencies(stdout, stderr io.Writer) (commandDependencies, error) {
@@ -97,6 +113,8 @@ func runCommand(ctx context.Context, args []string, deps commandDependencies) er
 			return writeTopLevelHelp(deps.stdout)
 		case "suggest":
 			return runSuggestCommand(ctx, args[1:], deps)
+		case "studio":
+			return runStudioCommand(ctx, args[1:], deps)
 		case "apply":
 			return runApplyCommand(ctx, args[1:], deps)
 		}
@@ -146,6 +164,9 @@ func withCommandDefaults(deps commandDependencies) commandDependencies {
 	}
 	if deps.newSink == nil {
 		deps.newSink = newBeepSink
+	}
+	if deps.newStudioProgram == nil {
+		deps.newStudioProgram = newTeaProgram
 	}
 	return deps
 }
