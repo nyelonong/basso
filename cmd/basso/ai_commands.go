@@ -101,7 +101,12 @@ func runCommand(ctx context.Context, args []string, deps commandDependencies) er
 			return runApplyCommand(ctx, args[1:], deps)
 		}
 	}
-	return run(ctx, args, deps.stdout, deps.newProvider, deps.newSink)
+	return run(ctx, args, playbackObservers{
+		onBar: func(bar, bpm, stepsPerBar int) {
+			fmt.Fprintf(deps.stdout, "bar %d bpm %d\n", bar, bpm)
+		},
+		onDiagnostic: stderrDiagnosticReporter(deps.stderr),
+	}, deps.newProvider, deps.newSink)
 }
 
 func writeTopLevelHelp(stdout io.Writer) error {

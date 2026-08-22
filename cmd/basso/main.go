@@ -25,19 +25,20 @@ type closablePatternProvider interface {
 }
 
 // providerConstructor builds a closablePatternProvider from a .fnl file
-// path. Production code passes newFennelProvider (below); tests inject a
-// stub that records the path instead of reading a real file.
-type providerConstructor func(path string) (closablePatternProvider, error)
+// path and a diagnostic reporter. Production code passes newFennelProvider
+// (below); tests inject a stub that records the path instead of reading a
+// real file.
+type providerConstructor func(path string, onDiagnostic engine.DiagnosticReporter) (closablePatternProvider, error)
 
 // newFennelProvider adapts engine.FennelProvider.NewFromFile to
 // providerConstructor's signature.
-func newFennelProvider(path string) (closablePatternProvider, error) {
+func newFennelProvider(path string, onDiagnostic engine.DiagnosticReporter) (closablePatternProvider, error) {
 	inventory, err := engine.LoadSoundInventory("sound/808")
 	if err != nil {
 		return nil, err
 	}
 	evaluator := engine.NewEvaluator(inventory, 250*time.Millisecond)
-	return engine.NewFromFile(path, evaluator, stderrDiagnosticReporter(os.Stderr))
+	return engine.NewFromFile(path, evaluator, onDiagnostic)
 }
 
 func stderrDiagnosticReporter(stderr io.Writer) engine.DiagnosticReporter {
@@ -69,19 +70,28 @@ func newBeepSink() engine.AudioSink {
 	return engine.NewBeepSink("sound/808/")
 }
 
-// progressProvider decorates a PatternProvider, printing the bar number and
-// active bpm to out after each successful Next call, and returning the same
-// values unmodified otherwise. Engine.Run only ever calls Next from its own
-// single goroutine, so this needs no synchronization.
-type progressProvider struct {
-	engine.PatternProvider
-	out io.Writer
+// playbackObservers receives playback events from run(): one OnBar call per
+// completed bar with its active bpm and steps per bar, and every engine
+// diagnostic as reported. Nil fields are skipped. Both callbacks run on the
+// engine's single goroutine; implementations must not block it.
+type playbackObservers struct {
+	onBar        func(bar, bpm, stepsPerBar int)
+	onDiagnostic engine.DiagnosticReporter
 }
 
-func (p *progressProvider) Next(bar int) ([]engine.Hit, int, int, error) {
+// observingProvider decorates a PatternProvider, forwarding each successful
+// Next call to onBar before returning the same values unmodified otherwise.
+// Engine.Run only ever calls Next from its own single goroutine, so this
+// needs no synchronization.
+type observingProvider struct {
+	engine.PatternProvider
+	onBar func(bar, bpm, stepsPerBar int)
+}
+
+func (p *observingProvider) Next(bar int) ([]engine.Hit, int, int, error) {
 	hits, bpm, stepsPerBar, err := p.PatternProvider.Next(bar)
-	if err == nil {
-		fmt.Fprintf(p.out, "bar %d bpm %d\n", bar, bpm)
+	if err == nil && p.onBar != nil {
+		p.onBar(bar, bpm, stepsPerBar)
 	}
 	return hits, bpm, stepsPerBar, err
 }
@@ -112,24 +122,29 @@ func resolveFile(args []string) (string, error) {
 }
 
 // run is main()'s testable core: it resolves args to a file path,
-// constructs a provider via newProvider, wraps it to print bar/bpm progress
-// to out, and plays it through an Engine backed by newSink until ctx is
-// cancelled or the provider errors. Tests call it with stub newProvider and
-// newSink, so no real file, watcher, or audio device is touched.
-func run(ctx context.Context, args []string, out io.Writer, newProvider providerConstructor, newSink func() engine.AudioSink) error {
+// constructs a provider via newProvider with observers.onDiagnostic, wraps
+// it to forward bar progress to observers.onBar, and plays it through an
+// Engine backed by newSink until ctx is cancelled or the provider errors.
+// Tests call it with stub newProvider and newSink, so no real file,
+// watcher, or audio device is touched.
+func run(ctx context.Context, args []string, observers playbackObservers, newProvider providerConstructor, newSink func() engine.AudioSink) error {
 	path, err := resolveFile(args)
 	if err != nil {
 		return err
 	}
 
-	provider, err := newProvider(path)
+	diagnostics := observers.onDiagnostic
+	if diagnostics == nil {
+		diagnostics = func(engine.Diagnostic) {}
+	}
+	provider, err := newProvider(path, diagnostics)
 	if err != nil {
 		return err
 	}
 	defer provider.Close()
 
 	e := engine.NewEngine(newSink())
-	loud := &progressProvider{PatternProvider: provider, out: out}
+	loud := &observingProvider{PatternProvider: provider, onBar: observers.onBar}
 
 	if err := e.Run(ctx, loud); err != nil && err != context.Canceled {
 		return err

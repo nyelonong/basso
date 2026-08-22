@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -54,12 +56,12 @@ func TestMain_ArgParsing(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var gotPath string
 			stopErr := errors.New("stop after first bar")
-			newProvider := func(path string) (closablePatternProvider, error) {
+			newProvider := func(path string, _ engine.DiagnosticReporter) (closablePatternProvider, error) {
 				gotPath = path
 				return &stubProvider{err: stopErr}, nil
 			}
 
-			err := run(context.Background(), tt.args, io.Discard, newProvider, newFakeSink)
+			err := run(context.Background(), tt.args, playbackObservers{}, newProvider, newFakeSink)
 
 			if gotPath != "foo.fnl" {
 				t.Errorf("resolved path = %q, want %q", gotPath, "foo.fnl")
@@ -87,12 +89,12 @@ func TestMain_RejectsMissingArg(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			called := false
-			newProvider := func(path string) (closablePatternProvider, error) {
+			newProvider := func(path string, _ engine.DiagnosticReporter) (closablePatternProvider, error) {
 				called = true
 				return nil, nil
 			}
 
-			err := run(context.Background(), tt.args, io.Discard, newProvider, newFakeSink)
+			err := run(context.Background(), tt.args, playbackObservers{}, newProvider, newFakeSink)
 
 			if err == nil {
 				t.Fatalf("run() error = nil, want error")
@@ -135,8 +137,8 @@ func TestRun_InvalidInitialSourceDoesNotConstructSink(t *testing.T) {
 	err := run(
 		context.Background(),
 		[]string{"pattern.fnl"},
-		io.Discard,
-		func(string) (closablePatternProvider, error) {
+		playbackObservers{},
+		func(string, engine.DiagnosticReporter) (closablePatternProvider, error) {
 			return nil, invalid
 		},
 		func() engine.AudioSink {
@@ -169,7 +171,7 @@ func TestDispatch_PreservesPlayAndBareAlias(t *testing.T) {
 			deps := commandDependencies{
 				stdout: io.Discard,
 				stderr: io.Discard,
-				newProvider: func(path string) (closablePatternProvider, error) {
+				newProvider: func(path string, _ engine.DiagnosticReporter) (closablePatternProvider, error) {
 					gotPath = path
 					return &stubProvider{err: stopErr}, nil
 				},
@@ -185,5 +187,69 @@ func TestDispatch_PreservesPlayAndBareAlias(t *testing.T) {
 				t.Errorf("provider path = %q, want pattern.fnl", gotPath)
 			}
 		})
+	}
+}
+
+// countingProvider is a closablePatternProvider stub whose Next succeeds
+// with fixed tempo values for `stops` bars, then always returns stopErr, so
+// Engine.Run paces through real bars before stopping deterministically.
+type countingProvider struct {
+	stops   int
+	stopErr error
+}
+
+func (s *countingProvider) Next(bar int) ([]engine.Hit, int, int, error) {
+	if bar >= s.stops {
+		return nil, 0, 0, s.stopErr
+	}
+	return nil, 400, 16, nil
+}
+
+func (s *countingProvider) Close() error { return nil }
+
+// TestRun_ObservesBarsAndDiagnostics proves the observer seam: every
+// successful bar reaches onBar with its bpm and steps per bar, and the
+// diagnostic reporter handed to the provider constructor forwards into
+// onDiagnostic.
+func TestRun_ObservesBarsAndDiagnostics(t *testing.T) {
+	stopErr := errors.New("stop after second bar")
+	reported := make(chan engine.Diagnostic, 1)
+
+	newProvider := func(path string, onDiagnostic engine.DiagnosticReporter) (closablePatternProvider, error) {
+		if onDiagnostic == nil {
+			t.Error("provider constructor received nil diagnostic reporter")
+		}
+		bar := 2
+		onDiagnostic(engine.Diagnostic{
+			RevisionSHA256: strings.Repeat("b", 64),
+			Bar:            &bar,
+			Phase:          engine.DiagnosticPhaseValidate,
+			Err:            errors.New("stale revision"),
+		})
+		return &countingProvider{stops: 2, stopErr: stopErr}, nil
+	}
+
+	var bars []string
+	observers := playbackObservers{
+		onBar:        func(bar, bpm, stepsPerBar int) { bars = append(bars, fmt.Sprintf("%d/%d/%d", bar, bpm, stepsPerBar)) },
+		onDiagnostic: func(d engine.Diagnostic) { reported <- d },
+	}
+	err := run(context.Background(), []string{"pattern.fnl"}, observers, newProvider, newFakeSink)
+	if !errors.Is(err, stopErr) {
+		t.Fatalf("run() error = %v, want %v", err, stopErr)
+	}
+
+	wantBars := []string{"0/400/16", "1/400/16"}
+	if !reflect.DeepEqual(bars, wantBars) {
+		t.Errorf("onBar events = %v, want %v", bars, wantBars)
+	}
+
+	select {
+	case d := <-reported:
+		if d.Phase != engine.DiagnosticPhaseValidate || d.Bar == nil || *d.Bar != 2 {
+			t.Errorf("diagnostic = %+v, want validate phase at bar 2", d)
+		}
+	default:
+		t.Error("onDiagnostic was never called")
 	}
 }

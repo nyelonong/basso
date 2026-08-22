@@ -127,7 +127,7 @@ func TestHelpCommand_HasNoSideEffects(t *testing.T) {
 		newPreflighter: func(string) (suggest.Preflighter, error) {
 			return nil, unexpected("preflight")
 		},
-		newProvider: func(string) (closablePatternProvider, error) {
+		newProvider: func(string, engine.DiagnosticReporter) (closablePatternProvider, error) {
 			return nil, unexpected("playback provider")
 		},
 		newSink: func() engine.AudioSink {
@@ -404,7 +404,7 @@ func testCommandDependencies(dir string, stdout, stderr io.Writer) commandDepend
 		newPreflighter: func(string) (suggest.Preflighter, error) {
 			return &fakeCommandPreflighter{}, nil
 		},
-		newProvider: func(string) (closablePatternProvider, error) {
+		newProvider: func(string, engine.DiagnosticReporter) (closablePatternProvider, error) {
 			return nil, errors.New("unexpected playback")
 		},
 		newSink: newFakeSink,
