@@ -66,6 +66,12 @@ func ValidateBar(bar Bar, inventory SoundInventory) error {
 		return fmt.Errorf("engine: hit count %d exceeds 4096", len(bar.Hits))
 	}
 
+	type groupUsage struct {
+		hits    int
+		changes []int
+	}
+	var usages map[instrumentGroup]*groupUsage
+
 	for index, hit := range bar.Hits {
 		if hit.Step < 0 || hit.Step >= bar.StepsPerBar {
 			return fmt.Errorf("engine: hit %d step %d is outside [0,%d)", index, hit.Step, bar.StepsPerBar)
@@ -99,8 +105,43 @@ func ValidateBar(bar Bar, inventory SoundInventory) error {
 		if hit.Length < 1 || hit.Length > 4096 {
 			return fmt.Errorf("engine: hit %d note length %d must be in [1,4096]", index, hit.Length)
 		}
-		if _, ok := findInstrument(hit.Instrument); !ok {
+		preset, ok := findInstrument(hit.Instrument)
+		if !ok {
 			return fmt.Errorf("engine: hit %d instrument %q is not supported", index, hit.Instrument)
+		}
+		if preset.policy.mustEndWithinBar && hit.Step+hit.Length > bar.StepsPerBar {
+			return fmt.Errorf("engine: hit %d instrument %q must end within its bar", index, hit.Instrument)
+		}
+		if preset.policy.group != instrumentGroupNone {
+			if usages == nil {
+				usages = make(map[instrumentGroup]*groupUsage)
+			}
+			usage := usages[preset.policy.group]
+			if usage == nil {
+				usage = &groupUsage{changes: make([]int, bar.StepsPerBar+1)}
+				usages[preset.policy.group] = usage
+			}
+			usage.hits++
+			usage.changes[hit.Step]++
+			usage.changes[hit.Step+hit.Length]--
+		}
+	}
+
+	for group := instrumentGroup(1); group < instrumentGroupCount; group++ {
+		usage := usages[group]
+		if usage == nil {
+			continue
+		}
+		policy := instrumentGroupPolicies[group]
+		if usage.hits > policy.maxHits {
+			return fmt.Errorf("engine: %s hit count %d exceeds %d", policy.name, usage.hits, policy.maxHits)
+		}
+		active := 0
+		for step := range bar.StepsPerBar {
+			active += usage.changes[step]
+			if active > policy.maxConcurrent {
+				return fmt.Errorf("engine: %s overlap %d at step %d exceeds %d voices", policy.name, active, step, policy.maxConcurrent)
+			}
 		}
 	}
 

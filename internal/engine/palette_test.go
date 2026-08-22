@@ -16,8 +16,11 @@ func TestInstrumentCatalog(t *testing.T) {
 		if instrument.RecommendedRange == "" {
 			t.Errorf("instrument %q recommended range is empty", instrument.Name)
 		}
+		if (instrument.Name == "lead" || instrument.Name == "pad") && instrument.Limits == "" {
+			t.Errorf("instrument %q limits are empty", instrument.Name)
+		}
 	}
-	if want := []string{"bass", "brass", "pluck"}; !reflect.DeepEqual(names, want) {
+	if want := []string{"bass", "brass", "lead", "pad", "pluck"}; !reflect.DeepEqual(names, want) {
 		t.Fatalf("InstrumentCatalog() names = %v, want %v", names, want)
 	}
 
@@ -34,6 +37,18 @@ func TestInstrumentPalette(t *testing.T) {
 		}
 		if preset.synthesize == nil {
 			t.Errorf("preset %q synthesize function is nil", name)
+		}
+		if preset.policy.group != instrumentGroupNone {
+			policy, ok := instrumentGroupPolicies[preset.policy.group]
+			if !ok {
+				t.Errorf("preset %q references a missing group policy", name)
+			}
+			if !preset.policy.mustEndWithinBar {
+				t.Errorf("preset %q has bounded overlap without within-bar duration", name)
+			}
+			if policy.maxHits < 1 || policy.maxConcurrent < 1 {
+				t.Errorf("preset %q group limits = %+v, want positive limits", name, policy)
+			}
 		}
 	}
 }

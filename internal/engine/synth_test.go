@@ -161,3 +161,62 @@ func TestSynthEnvelopeClampsShortDurations(t *testing.T) {
 		}
 	}
 }
+
+func TestSynthesizeLead(t *testing.T) {
+	assertElectronicSynth(t, synthesizeLead)
+	assertSynthsDiffer(t, synthesizeLead, synthesizeNote)
+}
+
+func TestSynthesizePad(t *testing.T) {
+	assertElectronicSynth(t, synthesizePad)
+	assertSynthsDiffer(t, synthesizePad, synthesizeBrass)
+}
+
+func assertSynthsDiffer(
+	t *testing.T,
+	firstSynth func(float64, time.Duration) (beep.Streamer, error),
+	secondSynth func(float64, time.Duration) (beep.Streamer, error),
+) {
+	t.Helper()
+	const sustain = 50 * time.Millisecond
+	firstStreamer, err := firstSynth(440, sustain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondStreamer, err := secondSynth(440, sustain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reflect.DeepEqual(collectSamples(firstStreamer), collectSamples(secondStreamer)) {
+		t.Fatal("new preset samples equal the existing comparison voice")
+	}
+}
+
+func assertElectronicSynth(t *testing.T, synthesize func(float64, time.Duration) (beep.Streamer, error)) {
+	t.Helper()
+	for _, sustain := range []time.Duration{5 * time.Millisecond, 250 * time.Millisecond} {
+		firstStreamer, err := synthesize(440, sustain)
+		if err != nil {
+			t.Fatalf("synthesize(%v) error = %v", sustain, err)
+		}
+		secondStreamer, err := synthesize(440, sustain)
+		if err != nil {
+			t.Fatalf("repeated synthesize(%v) error = %v", sustain, err)
+		}
+		first := collectSamples(firstStreamer)
+		second := collectSamples(secondStreamer)
+		if len(first) != deviceSampleRate.N(sustain) {
+			t.Fatalf("synthesize(%v) sample count = %d, want %d", sustain, len(first), deviceSampleRate.N(sustain))
+		}
+		if !reflect.DeepEqual(first, second) {
+			t.Fatalf("synthesize(%v) is not deterministic", sustain)
+		}
+		for i, sample := range first {
+			for channel, value := range sample {
+				if math.IsNaN(value) || math.IsInf(value, 0) || math.Abs(value) > 1+1e-12 {
+					t.Fatalf("synthesize(%v) sample[%d][%d] = %v, want finite normalized output", sustain, i, channel, value)
+				}
+			}
+		}
+	}
+}

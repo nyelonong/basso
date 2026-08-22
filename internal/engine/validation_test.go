@@ -283,6 +283,88 @@ func TestValidateBar_RejectsInstrument(t *testing.T) {
 	}
 }
 
+func TestValidateBar_PaletteMustEndWithinBar(t *testing.T) {
+	tests := []struct {
+		name       string
+		instrument string
+		step       int
+		length     int
+		wantErr    bool
+	}{
+		{name: "lead ends at boundary", instrument: "lead", step: 12, length: 4},
+		{name: "pad fills bar", instrument: "pad", step: 0, length: 16},
+		{name: "lead crosses boundary", instrument: "lead", step: 13, length: 4, wantErr: true},
+		{name: "pad crosses boundary", instrument: "pad", step: 1, length: 16, wantErr: true},
+		{name: "existing bass may cross boundary", instrument: "bass", step: 15, length: 4096},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			bar := paletteBar([]Hit{{
+				Step: test.step, Note: "C3", Instrument: test.instrument,
+				Length: test.length, Pan: 0, Velocity: 0.5,
+			}})
+			err := ValidateBar(bar, testInventory())
+			if (err != nil) != test.wantErr {
+				t.Fatalf("ValidateBar() error = %v, wantErr %v", err, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateBar_PaletteHitLimit(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		count   int
+		wantErr bool
+	}{
+		{name: "maximum", count: 64},
+		{name: "above maximum", count: 65, wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			hits := make([]Hit, test.count)
+			for i := range hits {
+				hits[i] = Hit{
+					Step: i / 8, Note: "C3", Instrument: []string{"lead", "pad"}[i%2],
+					Length: 1, Pan: 0, Velocity: 0.5,
+				}
+			}
+			err := ValidateBar(paletteBar(hits), testInventory())
+			if (err != nil) != test.wantErr {
+				t.Fatalf("ValidateBar() error = %v, wantErr %v", err, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateBar_PaletteOverlapLimit(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		count   int
+		wantErr bool
+	}{
+		{name: "maximum", count: 8},
+		{name: "above maximum", count: 9, wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			hits := make([]Hit, test.count)
+			for i := range hits {
+				hits[i] = Hit{
+					Step: 2, Note: "C3", Instrument: []string{"lead", "pad"}[i%2],
+					Length: 4, Pan: 0, Velocity: 0.5,
+				}
+			}
+			err := ValidateBar(paletteBar(hits), testInventory())
+			if (err != nil) != test.wantErr {
+				t.Fatalf("ValidateBar() error = %v, wantErr %v", err, test.wantErr)
+			}
+		})
+	}
+}
+
+func paletteBar(hits []Hit) Bar {
+	return Bar{BPM: 120, StepsPerBar: 16, Hits: hits}
+}
+
 func TestLoadSoundInventory_RegularBasenamesOnly(t *testing.T) {
 	root := t.TempDir()
 	regular := filepath.Join(root, "kick.wav")

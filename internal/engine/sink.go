@@ -179,6 +179,67 @@ func synthesizeBrass(freq float64, sustain time.Duration) (beep.Streamer, error)
 	return synthesizeSawtoothNote(freq, sustain, brassAttack, brassMaxRelease, bassReleaseFraction)
 }
 
+const (
+	leadAttack          = 5 * time.Millisecond
+	leadMaxRelease      = 60 * time.Millisecond
+	leadReleaseFraction = 0.25
+	leadCutoff          = 6_000.0
+	padAttack           = 120 * time.Millisecond
+	padMaxRelease       = 180 * time.Millisecond
+	padReleaseFraction  = 0.3
+	padCutoff           = 1_800.0
+	padDetuneCents      = 7.0
+)
+
+func synthesizeLead(freq float64, sustain time.Duration) (beep.Streamer, error) {
+	square, err := generators.SquareTone(deviceSampleRate, freq)
+	if err != nil {
+		return nil, fmt.Errorf("synthesize lead square: %w", err)
+	}
+	saw, err := generators.SawtoothTone(deviceSampleRate, freq)
+	if err != nil {
+		return nil, fmt.Errorf("synthesize lead sawtooth: %w", err)
+	}
+	mixed, err := newWeightedMixer([]beep.Streamer{square, saw}, []float64{0.55, 0.35})
+	if err != nil {
+		return nil, fmt.Errorf("synthesize lead mix: %w", err)
+	}
+	filtered, err := newOnePoleLowPass(mixed, deviceSampleRate, leadCutoff)
+	if err != nil {
+		return nil, fmt.Errorf("synthesize lead filter: %w", err)
+	}
+	return applyEnvelope(filtered, sustain, leadAttack, leadMaxRelease, leadReleaseFraction), nil
+}
+
+func synthesizePad(freq float64, sustain time.Duration) (beep.Streamer, error) {
+	lower := freq * math.Exp2(-padDetuneCents/1200)
+	upper := freq * math.Exp2(padDetuneCents/1200)
+	lowSaw, err := generators.SawtoothTone(deviceSampleRate, lower)
+	if err != nil {
+		return nil, fmt.Errorf("synthesize pad lower sawtooth: %w", err)
+	}
+	triangle, err := generators.TriangleTone(deviceSampleRate, freq)
+	if err != nil {
+		return nil, fmt.Errorf("synthesize pad triangle: %w", err)
+	}
+	highSaw, err := generators.SawtoothTone(deviceSampleRate, upper)
+	if err != nil {
+		return nil, fmt.Errorf("synthesize pad upper sawtooth: %w", err)
+	}
+	mixed, err := newWeightedMixer(
+		[]beep.Streamer{lowSaw, triangle, highSaw},
+		[]float64{0.25, 0.3, 0.25},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("synthesize pad mix: %w", err)
+	}
+	filtered, err := newOnePoleLowPass(mixed, deviceSampleRate, padCutoff)
+	if err != nil {
+		return nil, fmt.Errorf("synthesize pad filter: %w", err)
+	}
+	return applyEnvelope(filtered, sustain, padAttack, padMaxRelease, padReleaseFraction), nil
+}
+
 // pluckMaxRelease and pluckReleaseFraction shape pluck's tail-only release
 // fade (no attack ramp — see newKarplusStrongStreamer's doc comment), capped
 // the same way splitEnvelope caps bass/brass releases.

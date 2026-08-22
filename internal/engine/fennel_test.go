@@ -234,6 +234,28 @@ pattern
 	}
 }
 
+func TestFennelProvider_MapsPaletteInstruments(t *testing.T) {
+	source := `
+(fn pattern [bar]
+  [{:step 0 :note "C3" :instrument "pad" :length 4}
+   {:step 8 :note "E4" :instrument "lead" :length 2}])
+
+pattern
+`
+
+	provider, err := New(source, NewEvaluator(fennelProviderTestInventory(), legacyEvaluationTimeout), nil)
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	hits, _, _, err := provider.Next(0)
+	if err != nil {
+		t.Fatalf("Next(0) error = %v, want nil", err)
+	}
+	if len(hits) != 2 || hits[0].Instrument != "pad" || hits[1].Instrument != "lead" {
+		t.Fatalf("hits = %+v, want pad then lead", hits)
+	}
+}
+
 // TestFennelProvider_NoteHitDefaultsInstrumentToBass verifies that a :note
 // hit omitting :instrument defaults to Hit.Instrument == "bass", so every
 // existing pattern (bass-groove.fnl etc.) keeps working unchanged.
