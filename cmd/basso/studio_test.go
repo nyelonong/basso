@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 	"github.com/nyelonong/basso/internal/ai"
 	"github.com/nyelonong/basso/internal/engine"
 	"github.com/nyelonong/basso/internal/suggest"
@@ -622,5 +624,60 @@ func TestStudioModel_PulseDecaysAfterBar(t *testing.T) {
 	}
 	if got := model.(studioModel).pulseLevel; got > 0 {
 		t.Errorf("pulseLevel = %v, want decayed to zero", got)
+	}
+}
+
+// TestStudioModel_TimelineRowsPerInstrument proves the strip becomes labeled
+// per-instrument rows, one per class actually playing.
+func TestStudioModel_TimelineRowsPerInstrument(t *testing.T) {
+	var model tea.Model = newStudioModel("pattern.fnl")
+	hits := []engine.Hit{
+		{Step: 0, Sample: "kick2.wav", Velocity: 1.0},
+		{Step: 4, Sample: "snare.wav", Velocity: 0.5},
+	}
+	model, _ = model.Update(barMsg{bar: 2, bpm: 130, stepsPerBar: 16, hits: hits})
+	view := model.(studioModel).View()
+	for _, want := range []string{"kick", "snare"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view missing %q row label:\n%q", want, view)
+		}
+	}
+	if !strings.Contains(view, "█") || !strings.Contains(view, "▄") {
+		t.Errorf("view lost velocity shading:\n%q", view)
+	}
+}
+
+// TestStudioModel_PanSpreadMeter proves panned hits light up a left-to-right
+// density strip.
+func TestStudioModel_PanSpreadMeter(t *testing.T) {
+	var model tea.Model = newStudioModel("pattern.fnl")
+	hits := []engine.Hit{
+		{Step: 0, Sample: "conga1.wav", Pan: -1.0, Velocity: 1.0},
+		{Step: 2, Sample: "cowbell.wav", Pan: 1.0, Velocity: 1.0},
+	}
+	model, _ = model.Update(barMsg{bar: 1, bpm: 130, stepsPerBar: 16, hits: hits})
+	view := model.(studioModel).View()
+	if !strings.Contains(view, "L") || !strings.Contains(view, "R") {
+		t.Errorf("view = %q, want pan meter rails", view)
+	}
+	if !strings.Contains(view, "█") { // hard-left and hard-right both peak
+		t.Errorf("view = %q, want lit pan extremes", view)
+	}
+}
+
+// TestHighlightDiff proves diff lines get class-based coloring while keeping
+// every character intact.
+func TestHighlightDiff(t *testing.T) {
+	originalProfile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.ANSI)
+	defer lipgloss.SetColorProfile(originalProfile)
+
+	highlighted := highlightDiff("+added\nremoved\n@@ -1 +1 @@\n context\n")
+	if !strings.Contains(highlighted, "+added") || !strings.Contains(highlighted, "removed") ||
+		!strings.Contains(highlighted, "@@ -1 +1 @@") || !strings.Contains(highlighted, "context") {
+		t.Errorf("highlightDiff lost content: %q", highlighted)
+	}
+	if !strings.Contains(highlighted, "\x1b[") {
+		t.Error("highlightDiff produced no color codes")
 	}
 }

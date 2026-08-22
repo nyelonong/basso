@@ -313,6 +313,9 @@ func (m studioModel) View() string {
 		out.WriteString(pulseGlyph(m.pulseLevel) + " " +
 			fmt.Sprintf("bar %d bpm %d steps %d", m.bar, m.bpm, m.stepsPerBar) + "\n")
 		out.WriteString(renderTimeline(m.lastHits, m.stepsPerBar) + "\n")
+		if pan := renderPan(m.lastHits); pan != "" {
+			out.WriteString(pan + "\n")
+		}
 	}
 	if m.elapsed > 0 || m.played {
 		out.WriteString(fmt.Sprintf("up %s\n", m.elapsed))
@@ -340,7 +343,7 @@ func (m studioModel) View() string {
 		out.WriteString(fmt.Sprintf("candidate %s: %s [validation %s]\n",
 			shortID(m.candidate.Metadata.ID), m.candidate.Metadata.Summary, m.candidate.Metadata.Validation.Status))
 		if m.diff != "" {
-			out.WriteString("\ndiff:\n" + m.diff)
+			out.WriteString("\ndiff:\n" + highlightDiff(m.diff))
 		}
 	}
 	out.WriteString("\nq quit · s suggest · a apply · r reject\n")
@@ -402,8 +405,8 @@ func sampleClass(hit engine.Hit) string {
 	}
 }
 
-// renderTimeline draws the current bar as one cell per step: velocity-shaded
-// ramp runes in the dominant hit's color; empty steps stay faint dots.
+// renderTimeline draws one labeled row per playing instrument class, each a
+// velocity-shaded step strip; empty steps stay faint dots.
 func renderTimeline(hits []engine.Hit, steps int) string {
 	if steps <= 0 || steps > 256 {
 		steps = 16
@@ -412,7 +415,7 @@ func renderTimeline(hits []engine.Hit, steps int) string {
 		velocity float64
 		class    string
 	}
-	cells := make([]cell, steps)
+	cells := make([][]cell, steps)
 	for _, hit := range hits {
 		if hit.Step < 0 || hit.Step >= steps {
 			continue
@@ -421,29 +424,133 @@ func renderTimeline(hits []engine.Hit, steps int) string {
 		if velocity <= 0 {
 			velocity = 0.6 // defaulted hits play audibly even when unset upstream
 		}
-		if velocity > cells[hit.Step].velocity {
-			cells[hit.Step] = cell{velocity: velocity, class: sampleClass(hit)}
+		class := sampleClass(hit)
+		for _, existing := range cells[hit.Step] {
+			if existing.class == class && existing.velocity >= velocity {
+				velocity = 0
+				break
+			}
+		}
+		if velocity > 0 {
+			cells[hit.Step] = append(cells[hit.Step], cell{velocity: velocity, class: class})
 		}
 	}
 
 	ramp := []rune(timelineRamp)
-	var out strings.Builder
-	for i := range cells {
-		if cells[i].velocity == 0 {
-			out.WriteString(lipgloss.NewStyle().Faint(true).Render(string(ramp[0])))
-			continue
+	present := map[string]bool{}
+	rows := make(map[string]*strings.Builder)
+	var order []string
+	addClass := func(class string) {
+		if !present[class] {
+			present[class] = true
+			order = append(order, class)
+			rows[class] = &strings.Builder{}
 		}
-		idx := int(cells[i].velocity * float64(len(ramp)-1))
-		if idx < 1 {
-			idx = 1
+	}
+
+	for i := range cells {
+		strongest := map[string]float64{}
+		for _, c := range cells[i] {
+			addClass(c.class)
+			if c.velocity > strongest[c.class] {
+				strongest[c.class] = c.velocity
+			}
+		}
+		for class := range rows {
+			style := lipgloss.NewStyle().Foreground(timelineColors[class])
+			if v := strongest[class]; v > 0 {
+				idx := int(v * float64(len(ramp)-1))
+				if idx < 1 {
+					idx = 1
+				}
+				if idx >= len(ramp) {
+					idx = len(ramp) - 1
+				}
+				rows[class].WriteString(style.Render(string(ramp[idx])))
+			} else {
+				rows[class].WriteString(lipgloss.NewStyle().Faint(true).Render(string(ramp[0])))
+			}
+		}
+	}
+
+	labelWidth := 6
+	var out strings.Builder
+	for _, class := range order {
+		label := lipgloss.NewStyle().Foreground(timelineColors[class]).Render(fmt.Sprintf("%-*s", labelWidth, class))
+		out.WriteString(label + rows[class].String() + "\n")
+	}
+	if len(order) == 0 {
+		return ""
+	}
+	return strings.TrimSuffix(out.String(), "\n")
+}
+
+// panColumns splits the stereo field into buckets for the spread meter.
+const panColumns = 9
+
+// renderPan draws a left-to-right density strip of where this bar's hits sit
+// in the stereo field; columns accumulate overlapping-hit energy.
+func renderPan(hits []engine.Hit) string {
+	intensity := make([]float64, panColumns)
+	anyHit := false
+	for _, hit := range hits {
+		pan := hit.Pan
+		if pan < -1 {
+			pan = -1
+		}
+		if pan > 1 {
+			pan = 1
+		}
+		velocity := hit.Velocity
+		if velocity <= 0 {
+			velocity = 0.6
+		}
+		column := int((pan + 1) / 2 * float64(panColumns-1))
+		intensity[column] += velocity
+		anyHit = true
+	}
+	if !anyHit {
+		return ""
+	}
+	ramp := []rune(timelineRamp)
+	meter := lipgloss.NewStyle().Faint(true).Render("L")
+	for _, level := range intensity {
+		idx := int(level * float64(len(ramp)-1))
+		if idx < 0 {
+			idx = 0
 		}
 		if idx >= len(ramp) {
 			idx = len(ramp) - 1
 		}
-		style := lipgloss.NewStyle().Foreground(timelineColors[cells[i].class])
-		out.WriteString(style.Render(string(ramp[idx])))
+		if idx == 0 {
+			meter += lipgloss.NewStyle().Faint(true).Render("·")
+		} else {
+			meter += lipgloss.NewStyle().Foreground(timelineColors["hat"]).Render(string(ramp[idx]))
+		}
 	}
-	return out.String()
+	meter += lipgloss.NewStyle().Faint(true).Render("R")
+	return lipgloss.NewStyle().Faint(true).Render("pan   ") + meter
+}
+
+// highlightDiff colors unified-diff lines by role: additions green, removals
+// red, hunk headers violet.
+func highlightDiff(diff string) string {
+	addition := lipgloss.NewStyle().Foreground(lipgloss.Color("#50fa7b"))
+	removal := lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5555"))
+	hunk := lipgloss.NewStyle().Foreground(lipgloss.Color("#bd93f9"))
+
+	lines := strings.Split(diff, "\n")
+	for i, line := range lines {
+		switch {
+		case strings.HasPrefix(line, "+"):
+			lines[i] = addition.Render(line)
+		case strings.HasPrefix(line, "-"):
+			lines[i] = removal.Render(line)
+		case strings.HasPrefix(line, "@@"):
+			lines[i] = hunk.Render(line)
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // renderDiff diffs the on-disk source against the pending candidate.
