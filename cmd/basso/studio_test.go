@@ -108,6 +108,25 @@ func TestRunStudioCommand_PlaysAndQuitsCleanly(t *testing.T) {
 	}
 }
 
+func TestRunStudioCommand_WiresCandidateStore(t *testing.T) {
+	deps := testCommandDependencies(t.TempDir(), io.Discard, io.Discard)
+	deps.newProvider = func(string, engine.DiagnosticReporter) (closablePatternProvider, error) {
+		return &countingProvider{stops: 2, stopErr: errors.New("stop")}, nil
+	}
+	deps.newSink = newFakeSink
+	deps.newStudioProgram = func(model tea.Model, options ...tea.ProgramOption) programRunner {
+		studio := model.(studioModel)
+		if studio.store == nil {
+			t.Error("studio candidate store = nil, want production store")
+		}
+		return newHeadlessProgram("q")(model, options...)
+	}
+
+	if err := runStudioCommand(context.Background(), []string{"pattern.fnl"}, deps); err != nil {
+		t.Fatalf("runStudioCommand() error = %v", err)
+	}
+}
+
 // TestRunStudioCommand_RequiresOneFile verifies argument validation matches
 // play's contract before any UI or audio is created.
 func TestRunStudioCommand_RequiresOneFile(t *testing.T) {

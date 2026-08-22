@@ -731,6 +731,7 @@ func runStudioCommand(ctx context.Context, args []string, deps commandDependenci
 
 	model := newStudioModel(filepath.Base(flags.source))
 	model.sourcePath = path
+	model.store = suggest.NewStore(filepath.Join(deps.invocationDir, ".basso"), deps.now)
 	model.services = deps.studioServices(ai.Overrides{
 		Provider: flags.provider,
 		Model:    flags.model,
