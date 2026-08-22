@@ -686,19 +686,22 @@ func TestHighlightDiff(t *testing.T) {
 // trip play's positional parsing.
 func TestRunStudioCommand_ParsesFlagsBeforeFile(t *testing.T) {
 	var gotPath string
+	stopErr := errors.New("stop")
 	providerClosed := make(chan struct{}, 1)
 	deps := testCommandDependencies(t.TempDir(), io.Discard, io.Discard)
 	deps.newProvider = func(path string, _ engine.DiagnosticReporter) (closablePatternProvider, error) {
 		gotPath = path
-		return &closingProvider{inner: &stubProvider{err: errors.New("stop")}, closed: providerClosed}, nil
+		return &closingProvider{inner: &stubProvider{err: stopErr}, closed: providerClosed}, nil
 	}
 	deps.newSink = newFakeSink
 	deps.newStudioProgram = newHeadlessProgram("q")
 
 	err := runStudioCommand(context.Background(),
 		[]string{"--timeout", "45s", "--model", "ox-alpha-free", "pattern.fnl"}, deps)
-	if err != nil {
-		t.Fatalf("runStudioCommand() error = %v", err)
+	// Flag parsing must succeed: the stub stops playback immediately, so the
+	// only acceptable error is its stop signal — never a usage error.
+	if err != nil && !errors.Is(err, stopErr) {
+		t.Fatalf("runStudioCommand() error = %v, want none or stop", err)
 	}
 	if !strings.HasSuffix(gotPath, "pattern.fnl") {
 		t.Errorf("provider path = %q, want pattern.fnl", gotPath)
