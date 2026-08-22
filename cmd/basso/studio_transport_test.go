@@ -12,8 +12,10 @@ import (
 )
 
 type recordingTransport struct {
-	state studioTransportState
-	calls []string
+	state     studioTransportState
+	calls     []string
+	armedPath string
+	armErr    error
 }
 
 func (transport *recordingTransport) TogglePause() studioTransportState {
@@ -38,6 +40,12 @@ func (transport *recordingTransport) Play() studioTransportState {
 		transport.state = transportPlaying
 	}
 	return transport.state
+}
+
+func (transport *recordingTransport) ArmCandidate(path string) error {
+	transport.calls = append(transport.calls, "arm")
+	transport.armedPath = path
+	return transport.armErr
 }
 
 func TestStudioTransport_KeysAndStatus(t *testing.T) {
@@ -192,5 +200,105 @@ func TestStudioTransport_PauseContinuesAndStopResetsWithoutDeviceRestart(t *test
 	provider.mu.Unlock()
 	if closed != 1 {
 		t.Fatalf("provider Close calls = %d, want 1", closed)
+	}
+}
+
+type namedPatternProvider struct {
+	name string
+	bars []int
+}
+
+func (provider *namedPatternProvider) Next(bar int) ([]engine.Hit, int, int, error) {
+	provider.bars = append(provider.bars, bar)
+	return []engine.Hit{{Step: 0, Sample: provider.name, Velocity: 1}}, 120, 16, nil
+}
+
+func TestStudioTransport_ArmCandidateSwitchesNextBar(t *testing.T) {
+	real := &transportTestProvider{bars: make(chan int, 16)}
+	candidate := &transportTestProvider{bars: make(chan int, 16)}
+	transport, err := newStudioTransport(
+		context.Background(),
+		"real.fnl",
+		playbackObservers{},
+		func(path string, _ engine.DiagnosticReporter) (closablePatternProvider, error) {
+			if path == "candidate.fnl" {
+				return candidate, nil
+			}
+			return real, nil
+		},
+		func() engine.AudioSink { return &transportTestSink{} },
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("newStudioTransport() error = %v", err)
+	}
+	transport.Start()
+	if bar := waitTransportBar(t, real.bars); bar != 0 {
+		t.Fatalf("real bar = %d, want 0", bar)
+	}
+	if err := transport.ArmCandidate("candidate.fnl"); err != nil {
+		t.Fatalf("ArmCandidate() error = %v", err)
+	}
+	if bar := waitTransportBar(t, candidate.bars); bar != 1 {
+		t.Fatalf("candidate bar = %d, want 1", bar)
+	}
+	if err := transport.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+}
+
+func TestSwitchingProvider_ArmsCandidateAtNextBar(t *testing.T) {
+	real := &namedPatternProvider{name: "real.wav"}
+	candidate := &namedPatternProvider{name: "candidate.wav"}
+	provider := newSwitchingProvider(real)
+
+	hits, _, _, _ := provider.Next(0)
+	if hits[0].Sample != "real.wav" {
+		t.Fatalf("bar 0 sample = %q, want real.wav", hits[0].Sample)
+	}
+	switched, err := provider.Arm(candidate, false)
+	if err != nil {
+		t.Fatalf("Arm() error = %v", err)
+	}
+	select {
+	case <-switched:
+		t.Fatal("candidate switched before the next bar")
+	default:
+	}
+
+	hits, _, _, _ = provider.Next(1)
+	if hits[0].Sample != "candidate.wav" {
+		t.Fatalf("bar 1 sample = %q, want candidate.wav", hits[0].Sample)
+	}
+	select {
+	case <-switched:
+	default:
+		t.Fatal("candidate switch did not complete at next bar")
+	}
+	if len(candidate.bars) != 1 || candidate.bars[0] != 1 {
+		t.Fatalf("candidate bars = %v, want [1]", candidate.bars)
+	}
+}
+
+func TestSwitchingProvider_ArmsImmediatelyWhileNotPlaying(t *testing.T) {
+	real := &namedPatternProvider{name: "real.wav"}
+	candidate := &namedPatternProvider{name: "candidate.wav"}
+	provider := newSwitchingProvider(real)
+
+	switched, err := provider.Arm(candidate, true)
+	if err != nil {
+		t.Fatalf("Arm() error = %v", err)
+	}
+	select {
+	case <-switched:
+	default:
+		t.Fatal("immediate candidate switch stayed pending")
+	}
+	hits, _, _, _ := provider.Next(0)
+	if hits[0].Sample != "candidate.wav" {
+		t.Fatalf("first sample = %q, want candidate.wav", hits[0].Sample)
+	}
+	if _, err := provider.Arm(&namedPatternProvider{name: "other.wav"}, true); err == nil {
+		t.Fatal("second Arm() error = nil, want one-candidate guard")
 	}
 }

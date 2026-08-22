@@ -31,16 +31,71 @@ type studioTransportControl interface {
 	TogglePause() studioTransportState
 	Stop() studioTransportState
 	Play() studioTransportState
+	ArmCandidate(string) error
+}
+
+type providerSwitch struct {
+	candidate bool
+	done      chan struct{}
+}
+
+type switchingProvider struct {
+	mu sync.Mutex
+
+	real            engine.PatternProvider
+	candidate       engine.PatternProvider
+	activeCandidate bool
+	pending         *providerSwitch
+}
+
+func newSwitchingProvider(real engine.PatternProvider) *switchingProvider {
+	return &switchingProvider{real: real}
+}
+
+func (provider *switchingProvider) Arm(candidate engine.PatternProvider, immediate bool) (<-chan struct{}, error) {
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	if provider.candidate != nil {
+		return nil, errors.New("candidate provider is already armed")
+	}
+	provider.candidate = candidate
+	done := make(chan struct{})
+	if immediate {
+		provider.activeCandidate = true
+		close(done)
+	} else {
+		provider.pending = &providerSwitch{candidate: true, done: done}
+	}
+	return done, nil
+}
+
+func (provider *switchingProvider) Next(bar int) ([]engine.Hit, int, int, error) {
+	provider.mu.Lock()
+	if provider.pending != nil {
+		provider.activeCandidate = provider.pending.candidate
+		close(provider.pending.done)
+		provider.pending = nil
+	}
+	active := provider.real
+	if provider.activeCandidate {
+		active = provider.candidate
+	}
+	provider.mu.Unlock()
+	return active.Next(bar)
 }
 
 type studioTransport struct {
-	parent         context.Context
-	provider       closablePatternProvider
-	streamProvider engine.PatternProvider
-	engine         *engine.Engine
-	sink           *engine.SessionSink
-	pace           *engine.PausableClock
-	onDone         func(error)
+	parent            context.Context
+	provider          closablePatternProvider
+	candidateProvider closablePatternProvider
+	switcher          *switchingProvider
+	newProvider       providerConstructor
+	diagnostics       engine.DiagnosticReporter
+	streamProvider    engine.PatternProvider
+	engine            *engine.Engine
+	sink              *engine.SessionSink
+	pace              *engine.PausableClock
+	onDone            func(error)
 
 	mu           sync.Mutex
 	state        studioTransportState
@@ -70,10 +125,14 @@ func newStudioTransport(
 	}
 	pace := engine.NewPausableClock()
 	sink := engine.NewSessionSink(newSink(), pace)
-	observed := &observingProvider{PatternProvider: provider, onBar: observers.onBar}
+	switcher := newSwitchingProvider(provider)
+	observed := &observingProvider{PatternProvider: switcher, onBar: observers.onBar}
 	return &studioTransport{
 		parent:         parent,
 		provider:       provider,
+		switcher:       switcher,
+		newProvider:    newProvider,
+		diagnostics:    diagnostics,
 		streamProvider: observed,
 		engine:         engine.NewPacedEngine(sink, pace),
 		sink:           sink,
@@ -164,6 +223,29 @@ func (transport *studioTransport) Play() studioTransportState {
 	return transportPlaying
 }
 
+func (transport *studioTransport) ArmCandidate(path string) error {
+	candidate, err := transport.newProvider(path, transport.diagnostics)
+	if err != nil {
+		return err
+	}
+
+	transport.mu.Lock()
+	if transport.closed || transport.candidateProvider != nil {
+		transport.mu.Unlock()
+		_ = candidate.Close()
+		return errors.New("candidate provider is already armed")
+	}
+	immediate := transport.state != transportPlaying
+	if _, err := transport.switcher.Arm(candidate, immediate); err != nil {
+		transport.mu.Unlock()
+		_ = candidate.Close()
+		return err
+	}
+	transport.candidateProvider = candidate
+	transport.mu.Unlock()
+	return nil
+}
+
 func (transport *studioTransport) Close() error {
 	transport.closeOnce.Do(func() {
 		transport.Stop()
@@ -171,9 +253,13 @@ func (transport *studioTransport) Close() error {
 		transport.closed = true
 		transport.mu.Unlock()
 		transport.sink.Teardown()
+		var candidateErr error
+		if transport.candidateProvider != nil {
+			candidateErr = transport.candidateProvider.Close()
+		}
 		providerErr := transport.provider.Close()
 		transport.mu.Lock()
-		transport.closeErr = errors.Join(transport.lastErr, providerErr)
+		transport.closeErr = errors.Join(transport.lastErr, candidateErr, providerErr)
 		transport.mu.Unlock()
 	})
 	transport.mu.Lock()

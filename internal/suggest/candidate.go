@@ -67,6 +67,17 @@ func NewStore(root string, now func() time.Time) *Store {
 	return &Store{root: root, now: now}
 }
 
+// CandidateSourcePath returns the stored source path for id.
+func (s *Store) CandidateSourcePath(id string) (string, error) {
+	if s == nil || s.root == "" {
+		return "", errors.New("candidate store root is empty")
+	}
+	if !safeCandidateID(id) {
+		return "", fmt.Errorf("invalid candidate ID %q", id)
+	}
+	return filepath.Join(s.root, candidateDirectory, id+".fnl"), nil
+}
+
 // Save writes a candidate source and metadata pair using exclusive, private
 // file creation. It fills the schema version, creation time, candidate hash,
 // and deterministic ID.

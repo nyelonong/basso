@@ -469,6 +469,15 @@ const modifiedProposalSource = "(bpm 140)\n(fn pattern [bar] [])\npattern\n"
 // holding a saved candidate plus the source path.
 func readyCandidateModel(t *testing.T, dir string) (studioModel, string) {
 	t.Helper()
+	return readyCandidateModelWithTransport(t, dir, nil)
+}
+
+func readyCandidateModelWithTransport(
+	t *testing.T,
+	dir string,
+	transport studioTransportControl,
+) (studioModel, string) {
+	t.Helper()
 	source := filepath.Join(dir, "pattern.fnl")
 	if err := os.WriteFile(source, []byte(validProposalSource), 0o644); err != nil {
 		t.Fatal(err)
@@ -480,6 +489,7 @@ func readyCandidateModel(t *testing.T, dir string) (studioModel, string) {
 
 	m := newStudioModel("pattern.fnl")
 	m.sourcePath = source
+	m.transport = transport
 	m.services = studioTestServices(deps, dir)
 	m.store = suggest.NewStore(filepath.Join(dir, ".basso"), deps.now)
 
@@ -499,6 +509,25 @@ func readyCandidateModel(t *testing.T, dir string) (studioModel, string) {
 	}
 	model, _ = model.Update(ready)
 	return model.(studioModel), source
+}
+
+func TestStudioModel_CandidateArrivalArmsStoredSource(t *testing.T) {
+	dir := t.TempDir()
+	control := &recordingTransport{state: transportPlaying}
+	m, _ := readyCandidateModelWithTransport(t, dir, control)
+
+	want := filepath.Join(dir, ".basso", "candidates", m.candidate.Metadata.ID+".fnl")
+	if control.armedPath != want {
+		t.Fatalf("armed candidate path = %q, want %q", control.armedPath, want)
+	}
+
+	updated, command := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	if command != nil || updated.(studioModel).mode != studioIdle {
+		t.Fatal("s opened a second suggestion while a candidate was armed")
+	}
+	if view := updated.(studioModel).View(); !strings.Contains(view, "accept or reject the current candidate") {
+		t.Fatalf("View() = %q, want armed-candidate reason", view)
+	}
 }
 
 // TestStudioModel_CandidateRendersDiffAndStatus proves a returned candidate

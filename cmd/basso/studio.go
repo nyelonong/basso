@@ -181,7 +181,7 @@ func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.transportState = m.transport.Play()
 			}
 		case "s":
-			if m.mode != studioIdle {
+			if m.mode != studioIdle || m.candidate != nil {
 				break
 			}
 			input := textinput.New()
@@ -329,6 +329,15 @@ func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			candidate = saved
+			if m.transport != nil {
+				candidatePath, err := m.store.CandidateSourcePath(candidate.Metadata.ID)
+				if err == nil {
+					err = m.transport.ArmCandidate(candidatePath)
+				}
+				if err != nil {
+					m.events = append(m.events, "candidate audition failed: "+err.Error())
+				}
+			}
 		}
 		m.candidate = &candidate
 		m.diff = m.renderDiff()
@@ -389,6 +398,7 @@ func (m studioModel) View() string {
 	if m.candidate != nil {
 		out.WriteString(fmt.Sprintf("candidate %s: %s [validation %s]\n",
 			shortID(m.candidate.Metadata.ID), m.candidate.Metadata.Summary, m.candidate.Metadata.Validation.Status))
+		out.WriteString("suggest disabled: accept or reject the current candidate\n")
 		if m.diff != "" {
 			out.WriteString("\n" + m.renderDiffView())
 		}
