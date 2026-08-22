@@ -93,7 +93,7 @@ func (client *OllamaClient) Propose(
 	if envelope.Message.Role != "assistant" {
 		return suggest.Proposal{}, errors.New("ollama: response has no assistant message")
 	}
-	proposalContent, err := unwrapOllamaProposal(envelope.Message.Content)
+	proposalContent, err := unwrapFencedProposal(envelope.Message.Content)
 	if err != nil {
 		return suggest.Proposal{}, fmt.Errorf("ollama: invalid proposal: %w", err)
 	}
@@ -104,7 +104,7 @@ func (client *OllamaClient) Propose(
 	return proposal, nil
 }
 
-func unwrapOllamaProposal(content string) (string, error) {
+func unwrapFencedProposal(content string) (string, error) {
 	trimmed := strings.TrimSpace(content)
 	if !strings.HasPrefix(trimmed, "```") {
 		return content, nil

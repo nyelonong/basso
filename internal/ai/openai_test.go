@@ -260,6 +260,42 @@ func TestClients_RejectRefusalMalformedTruncatedAndOversizedResponses(t *testing
 			statusCode: http.StatusInternalServerError,
 			body:       "private provider body with test-api-key and Authorization",
 		},
+		{
+			name:     "Compatible empty choices",
+			provider: "openai-compatible",
+			body:     `{"choices":[]}`,
+		},
+		{
+			name:     "Compatible multiple choices",
+			provider: "openai-compatible",
+			body:     `{"choices":[{"message":{"role":"assistant","content":"{}"}},{"message":{"role":"assistant","content":"{}"}}]}`,
+		},
+		{
+			name:     "Compatible missing message content",
+			provider: "openai-compatible",
+			body:     `{"choices":[{"message":{"role":"assistant"}}]}`,
+		},
+		{
+			name:     "Compatible malformed envelope",
+			provider: "openai-compatible",
+			body:     `{"choices":`,
+		},
+		{
+			name:     "Compatible truncated proposal",
+			provider: "openai-compatible",
+			body:     openAICompatResponseForTest(`{"summary":"change"`),
+		},
+		{
+			name:       "Compatible non-2xx",
+			provider:   "openai-compatible",
+			statusCode: http.StatusUnauthorized,
+			body:       "private provider body with test-api-key and Authorization",
+		},
+		{
+			name:     "Compatible oversized body",
+			provider: "openai-compatible",
+			body:     strings.Repeat("x", maxResponseBodySize+1),
+		},
 	}
 
 	for _, test := range tests {
@@ -293,7 +329,7 @@ func TestClients_RejectRefusalMalformedTruncatedAndOversizedResponses(t *testing
 }
 
 func TestClients_RefuseRedirects(t *testing.T) {
-	for _, provider := range []string{"openai", "ollama"} {
+	for _, provider := range []string{"openai", "ollama", "openai-compatible"} {
 		t.Run(provider, func(t *testing.T) {
 			redirectedHeaders := make(chan http.Header, 1)
 			target := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, incoming *http.Request) {
@@ -338,7 +374,7 @@ func TestClients_RefuseRedirects(t *testing.T) {
 }
 
 func TestClients_RespectContextAndTimeout(t *testing.T) {
-	for _, provider := range []string{"openai", "ollama"} {
+	for _, provider := range []string{"openai", "ollama", "openai-compatible"} {
 		t.Run(provider+" caller cancellation", func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 				t.Error("provider was contacted for an already-canceled context")
@@ -419,6 +455,9 @@ func modelClientForTestWithTimeout(
 		}
 		config.OllamaURL = origin
 		return NewOllamaClient(config, server.Client())
+	case "openai-compatible":
+		config.OpenAICompatAPIKey = "test-api-key"
+		return newOpenAICompatClient(config, server.Client(), server.URL+"/zen/go/v1")
 	default:
 		t.Fatalf("unsupported test provider %q", provider)
 		return nil

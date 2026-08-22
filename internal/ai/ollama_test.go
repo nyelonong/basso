@@ -157,11 +157,11 @@ func TestOllamaClient_ParsesMarkdownFencedProposal(t *testing.T) {
 }
 
 func TestUnwrapOllamaProposal_IgnoresFenceLabel(t *testing.T) {
-	content, err := unwrapOllamaProposal(
+	content, err := unwrapFencedProposal(
 		"```JSON\n{\"summary\":\"Denser hats\",\"source\":\"pattern\"}\n```",
 	)
 	if err != nil {
-		t.Fatalf("unwrapOllamaProposal() error = %v", err)
+		t.Fatalf("unwrapFencedProposal() error = %v", err)
 	}
 
 	got, err := decodeProposal(content)
@@ -195,8 +195,8 @@ func TestUnwrapOllamaProposal_RejectsAmbiguousMarkdown(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := unwrapOllamaProposal(test.content); err == nil {
-				t.Fatal("unwrapOllamaProposal() error = nil, want rejection")
+			if _, err := unwrapFencedProposal(test.content); err == nil {
+				t.Fatal("unwrapFencedProposal() error = nil, want rejection")
 			}
 		})
 	}

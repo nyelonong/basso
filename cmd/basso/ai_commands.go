@@ -37,7 +37,7 @@ Usage:
   basso --help                                   Show this help.
 
 Suggestion flags:
-  --provider <openai|ollama>  AI provider (required).
+  --provider <openai|ollama|openai-compatible>  AI provider (required).
   --model <name>              Provider model name (required).
   --timeout <duration>        Provider request timeout (default 60s).
   --sounds <path>             Sound inventory directory (default sound/808).
@@ -48,6 +48,8 @@ Provider environment:
   BASSO_AI_TIMEOUT   Default provider request timeout.
   OPENAI_API_KEY     API key required by the OpenAI provider.
   BASSO_OLLAMA_URL   Ollama base URL (default http://127.0.0.1:11434).
+  BASSO_AI_BASE_URL  Base URL required by the openai-compatible provider.
+  BASSO_AI_API_KEY   API key required by the openai-compatible provider.
 `
 
 type modelFactory func(ai.Config) (suggest.Model, error)
@@ -150,7 +152,7 @@ func runSuggestCommand(ctx context.Context, args []string, deps commandDependenc
 	var model string
 	var timeout string
 	var sounds string
-	flags.StringVar(&provider, "provider", "", "AI provider: openai or ollama")
+	flags.StringVar(&provider, "provider", "", "AI provider: openai, ollama, or openai-compatible")
 	flags.StringVar(&model, "model", "", "provider model name")
 	flags.StringVar(&timeout, "timeout", "", "provider request timeout")
 	flags.StringVar(&sounds, "sounds", "sound/808", "sound inventory directory")
@@ -341,6 +343,8 @@ func newConcreteModel(config ai.Config) (suggest.Model, error) {
 		return ai.NewOpenAIClient(config, http.DefaultClient), nil
 	case "ollama":
 		return ai.NewOllamaClient(config, http.DefaultClient), nil
+	case "openai-compatible":
+		return ai.NewOpenAICompatClient(config, http.DefaultClient), nil
 	default:
 		return nil, fmt.Errorf("unsupported provider %q", config.Provider)
 	}

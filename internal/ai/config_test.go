@@ -80,6 +80,48 @@ func TestResolveConfig_RequiresProviderModelAndOpenAIKey(t *testing.T) {
 			overrides: Overrides{Provider: "openai", Model: "model"},
 		},
 		{
+			name:      "compatible API key",
+			overrides: Overrides{Provider: "openai-compatible", Model: "model"},
+			env:       map[string]string{"BASSO_AI_BASE_URL": "https://example.test/v1"},
+		},
+		{
+			name:      "compatible base URL",
+			overrides: Overrides{Provider: "openai-compatible", Model: "model"},
+			env:       map[string]string{"BASSO_AI_API_KEY": "test-secret"},
+		},
+		{
+			name:      "compatible whitespace key",
+			overrides: Overrides{Provider: "openai-compatible", Model: "model"},
+			env: map[string]string{
+				"BASSO_AI_API_KEY":  " ",
+				"BASSO_AI_BASE_URL": "https://example.test/v1",
+			},
+		},
+		{
+			name:      "compatible invalid URL scheme",
+			overrides: Overrides{Provider: "openai-compatible", Model: "model"},
+			env: map[string]string{
+				"BASSO_AI_API_KEY":  "test-secret",
+				"BASSO_AI_BASE_URL": "ftp://example.test/v1",
+			},
+		},
+		{
+			name:      "compatible URL with credentials",
+			overrides: Overrides{Provider: "openai-compatible", Model: "model"},
+			env: map[string]string{
+				"BASSO_AI_API_KEY":  "test-secret",
+				"BASSO_AI_BASE_URL": "https://user@example.test/v1",
+			},
+		},
+		{
+			name:      "compatible URL with query",
+			overrides: Overrides{Provider: "openai-compatible", Model: "model"},
+			env: map[string]string{
+				"BASSO_AI_API_KEY":  "test-secret",
+				"BASSO_AI_BASE_URL": "https://example.test/v1?x=1",
+			},
+		},
+		{
 			name:      "invalid timeout",
 			overrides: Overrides{Provider: "ollama", Model: "model", Timeout: "soon"},
 		},
@@ -102,6 +144,30 @@ func TestResolveConfig_RequiresProviderModelAndOpenAIKey(t *testing.T) {
 				t.Fatal("ResolveConfig() error = nil, want error")
 			}
 		})
+	}
+}
+
+func TestResolveConfig_OpenAICompatible(t *testing.T) {
+	env := map[string]string{
+		"BASSO_AI_API_KEY":  "test-secret",
+		"BASSO_AI_BASE_URL": "https://gateway.example/zen/go/v1/",
+	}
+
+	config, err := ResolveConfig(
+		Overrides{Provider: "openai-compatible", Model: "free-model"},
+		func(key string) string { return env[key] },
+	)
+	if err != nil {
+		t.Fatalf("ResolveConfig() error = %v", err)
+	}
+	if config.OpenAICompatAPIKey != "test-secret" {
+		t.Errorf("OpenAICompatAPIKey = %q, want configured key", config.OpenAICompatAPIKey)
+	}
+	if config.OpenAICompatBaseURL == nil {
+		t.Fatal("OpenAICompatBaseURL = nil")
+	}
+	if got := config.OpenAICompatBaseURL.String(); got != "https://gateway.example/zen/go/v1" {
+		t.Errorf("OpenAICompatBaseURL = %q, want %q", got, "https://gateway.example/zen/go/v1")
 	}
 }
 
