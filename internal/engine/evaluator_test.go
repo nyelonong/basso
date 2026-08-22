@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -86,6 +88,20 @@ pattern
 				t.Fatal("Preflight() error = nil, want error")
 			}
 		})
+	}
+}
+
+func TestEvaluator_ElectronicPaletteExamplePreflights(t *testing.T) {
+	source, err := os.ReadFile(filepath.Join("..", "..", "patterns", "electronic-palette.fnl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inventory, err := LoadSoundInventory(realSoundsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := NewEvaluator(inventory, evaluatorTestTimeout).Preflight(context.Background(), string(source), 0, 15); err != nil {
+		t.Fatalf("electronic palette preflight error = %v", err)
 	}
 }
 

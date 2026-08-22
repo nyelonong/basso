@@ -263,7 +263,7 @@ func TestAIWorkflow_InvalidGeneratedRevisionNeverInterruptsActiveAudio(t *testin
 	assertAIWorkflowLifecycle(t, sink, 1, 0)
 
 	invalidInitial := "(fn pattern [bar]"
-	invalidRepair := string(aiWorkflowSource("missing.wav", 1))
+	invalidRepair := string(aiWorkflowPaletteOverlap(9))
 	model := &aiWorkflowModel{
 		proposals: []suggest.Proposal{
 			{Summary: "broken initial", Source: invalidInitial},
@@ -287,7 +287,7 @@ func TestAIWorkflow_InvalidGeneratedRevisionNeverInterruptsActiveAudio(t *testin
 		"first local preflight",
 		"compile bar 0",
 		"repaired local preflight",
-		`sample "missing.wav" is not in the sound inventory`,
+		"lead/pad overlap 9 at step 0 exceeds 8 voices",
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("suggest error = %q, want substring %q", err, want)
@@ -312,8 +312,8 @@ func TestAIWorkflow_InvalidGeneratedRevisionNeverInterruptsActiveAudio(t *testin
 		t.Errorf("live diagnostic phase = %q, want %q", diagnostic.Phase, engine.DiagnosticPhaseValidate)
 	}
 	if diagnostic.Err == nil ||
-		!strings.Contains(diagnostic.Err.Error(), `sample "missing.wav" is not in the sound inventory`) {
-		t.Errorf("live diagnostic error = %v, want missing sample validation", diagnostic.Err)
+		!strings.Contains(diagnostic.Err.Error(), "lead/pad overlap 9 at step 0 exceeds 8 voices") {
+		t.Errorf("live diagnostic error = %v, want palette overlap validation", diagnostic.Err)
 	}
 	invalidHash := aiWorkflowSHA256([]byte(invalidRepair))
 	if diagnostic.RevisionSHA256 != invalidHash {
@@ -418,6 +418,17 @@ func aiWorkflowSource(sample string, velocity float64) []byte {
 		sample,
 		velocity,
 	))
+}
+
+func aiWorkflowPaletteOverlap(count int) []byte {
+	var source strings.Builder
+	source.WriteString("(bpm 400)\n(steps 1)\n\n(fn pattern [bar]\n  [")
+	for range count {
+		source.WriteString(`
+   {:step 0 :note "C3" :instrument "pad" :length 1 :velocity 0.3 :pan 0}`)
+	}
+	source.WriteString("])\n\npattern\n")
+	return []byte(source.String())
 }
 
 func aiWorkflowCommandDependencies(

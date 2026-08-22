@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -20,6 +21,17 @@ func fennelSourceSample(sample string) string {
 
 pattern
 `
+}
+
+func fennelPaletteOverlap(count int) string {
+	var source strings.Builder
+	source.WriteString("(fn pattern [bar]\n  [")
+	for range count {
+		source.WriteString(`
+   {:step 0 :note "C3" :instrument "pad" :length 4}`)
+	}
+	source.WriteString("])\n\npattern\n")
+	return source.String()
 }
 
 func TestNewFromFile_RejectsInvalidInitialSourceBeforeSinkStart(t *testing.T) {
@@ -235,10 +247,10 @@ pattern
 	}
 }
 
-// TestFennelProvider_NoAudioRestartAcrossRejectAndAccept runs an Engine
-// through one rejected edit and one accepted edit while the same fake sink
-// remains open.
-func TestFennelProvider_NoAudioRestartAcrossRejectAndAccept(t *testing.T) {
+// TestFennelProvider_NoAudioRestartAcrossPaletteRejectAndAccept runs an
+// Engine through one rejected edit and one accepted edit while the same fake
+// sink remains open.
+func TestFennelProvider_NoAudioRestartAcrossPaletteRejectAndAccept(t *testing.T) {
 	provider, err := New(
 		fennelSourceSample("a.wav"),
 		NewEvaluator(SoundInventory{"a.wav": {}, "b.wav": {}}, legacyEvaluationTimeout),
@@ -275,7 +287,7 @@ func TestFennelProvider_NoAudioRestartAcrossRejectAndAccept(t *testing.T) {
 		t.Errorf("teardownCalls (after bar 0) = %d, want 0", teardownCalls)
 	}
 
-	provider.setPendingSource(fennelSourceSample("missing.wav"))
+	provider.setPendingSource(fennelPaletteOverlap(9))
 
 	// bar 0's pattern is bpm 120, stepsPerBar 16 (defaults), so advance by
 	// that duration to release the bar wait and let Run request bar 1.

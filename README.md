@@ -42,6 +42,22 @@ to the real file and delete it. `esc` cancels an in-flight request; `q` discards
 an armed candidate, stops playback, and quits. Provider setup is only needed
 when you use an AI prompt.
 
+### Built-in instruments
+
+Note hits select `bass` by default and can explicitly use `brass`, `pluck`,
+`lead`, or `pad`:
+
+```fennel
+{:step 4 :note "E4" :instrument "lead" :length 2 :velocity 0.7}
+{:step 0 :note "C3" :instrument "pad" :length 16 :velocity 0.3}
+```
+
+`lead` is a bright electronic melody voice; `pad` is a warm filtered chord
+voice. Lead and pad notes must end within their current bar. Together they are
+limited to 64 hits per bar and 8 simultaneous voices. See
+`patterns/electronic-palette.fnl` for drums, a lead phrase, and an alternating
+pad chord.
+
 ### Develop
 
     make build   # bin/basso
@@ -78,8 +94,8 @@ variables win); keep that file out of version control and readable only by
 you (`chmod 600 .env`).
 
 Your explicit consent to `basso suggest` sends only the selected source, your
-prompt, Basso's fixed API/example, and the allowed sample and instrument names
-to the selected provider. It does not send other repository files, environment
+prompt, Basso's fixed API/example, and the allowed sample names plus built-in
+instrument descriptions, recommended ranges, and limits to the selected provider. It does not send other repository files, environment
 variables, credentials, git history, or candidate history.
 
 Flags override environment configuration: `--provider`, `--model`,
