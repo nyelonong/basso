@@ -47,6 +47,7 @@ func TestHelpCommand_ListsAllCommandsAndConfiguration(t *testing.T) {
 Usage:
   basso play <source.fnl>                        Play and hot-reload a pattern.
   basso <source.fnl>                             Alias for basso play.
+  basso studio <source.fnl>                      Cockpit UI: live status plus AI candidate review (accepts suggestion flags).
   basso suggest [flags] <source.fnl> <prompt>    Create and review a candidate.
   basso apply <candidate-id>                     Apply a validated candidate.
   basso help                                     Show this help.
@@ -127,7 +128,7 @@ func TestHelpCommand_HasNoSideEffects(t *testing.T) {
 		newPreflighter: func(string) (suggest.Preflighter, error) {
 			return nil, unexpected("preflight")
 		},
-		newProvider: func(string) (closablePatternProvider, error) {
+		newProvider: func(string, engine.DiagnosticReporter) (closablePatternProvider, error) {
 			return nil, unexpected("playback provider")
 		},
 		newSink: func() engine.AudioSink {
@@ -404,7 +405,7 @@ func testCommandDependencies(dir string, stdout, stderr io.Writer) commandDepend
 		newPreflighter: func(string) (suggest.Preflighter, error) {
 			return &fakeCommandPreflighter{}, nil
 		},
-		newProvider: func(string) (closablePatternProvider, error) {
+		newProvider: func(string, engine.DiagnosticReporter) (closablePatternProvider, error) {
 			return nil, errors.New("unexpected playback")
 		},
 		newSink: newFakeSink,
