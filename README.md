@@ -63,6 +63,12 @@ export BASSO_AI_MODEL="your-model-name"
 export BASSO_OLLAMA_URL=http://127.0.0.1:11434
 ```
 
+Any OpenAI-compatible gateway works too — point `BASSO_AI_BASE_URL` at its
+base URL and set `BASSO_AI_API_KEY`. Instead of exports, these variables can
+come from a `.env` file in the directory you run basso from (real environment
+variables win); keep that file out of version control and readable only by
+you (`chmod 600 .env`).
+
 Your explicit consent to `basso suggest` sends only the selected source, your
 prompt, Basso's fixed API/example, and the allowed sample and instrument names
 to the selected provider. It does not send other repository files, environment

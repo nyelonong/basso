@@ -286,7 +286,7 @@ func (m studioModel) View() string {
 	}
 	if m.lastError != "" {
 		out.WriteString("suggest failed: " + m.lastError + "\n")
-		out.WriteString("hint: set --provider/--model or BASSO_AI_PROVIDER, BASSO_AI_MODEL, BASSO_AI_BASE_URL, BASSO_AI_API_KEY\n")
+		out.WriteString("hint: set --provider/--model, BASSO_AI_PROVIDER, BASSO_AI_MODEL, BASSO_AI_BASE_URL, BASSO_AI_API_KEY, or a .env file here\n")
 	}
 	if m.candidate != nil {
 		out.WriteString(fmt.Sprintf("candidate %s: %s [validation %s]\n",

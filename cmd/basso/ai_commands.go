@@ -91,7 +91,7 @@ func defaultCommandDependencies(stdout, stderr io.Writer) (commandDependencies, 
 	return commandDependencies{
 		stdout:         stdout,
 		stderr:         stderr,
-		getenv:         os.Getenv,
+		getenv:         getenvWithFile(os.Getenv, loadEnvFile(filepath.Join(invocationDir, ".env"))),
 		now:            time.Now,
 		invocationDir:  invocationDir,
 		storeRoot:      filepath.Join(invocationDir, ".basso"),
