@@ -35,7 +35,12 @@ type studioModel struct {
 	played              bool
 	playbackErr         string
 	diagnosticsObserved int
+	events              []string
 }
+
+// maxStudioEvents caps the on-screen event log; older reload diagnostics
+// scroll off.
+const maxStudioEvents = 8
 
 func newStudioModel(sourceName string) studioModel {
 	return studioModel{sourceName: sourceName}
@@ -57,6 +62,10 @@ func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.stepsPerBar = msg.stepsPerBar
 	case diagnosticMsg:
 		m.diagnosticsObserved++
+		m.events = append(m.events, formatStudioEvent(msg.diagnostic))
+		if len(m.events) > maxStudioEvents {
+			m.events = m.events[len(m.events)-maxStudioEvents:]
+		}
 	case playbackDoneMsg:
 		if msg.err != nil {
 			m.playbackErr = msg.err.Error()
@@ -77,8 +86,25 @@ func (m studioModel) View() string {
 	if m.playbackErr != "" {
 		out.WriteString("playback stopped: " + m.playbackErr + "\n")
 	}
+	if len(m.events) > 0 {
+		out.WriteString("\nevents:\n")
+		for _, event := range m.events {
+			out.WriteString(event + "\n")
+		}
+	}
 	out.WriteString("\nq quit\n")
 	return out.String()
+}
+
+func formatStudioEvent(diagnostic engine.Diagnostic) string {
+	revision := diagnostic.RevisionSHA256
+	if len(revision) > 8 {
+		revision = revision[:8]
+	}
+	if diagnostic.Bar == nil {
+		return fmt.Sprintf("%s %s: %v", revision, diagnostic.Phase, diagnostic.Err)
+	}
+	return fmt.Sprintf("%s bar %d %s: %v", revision, *diagnostic.Bar, diagnostic.Phase, diagnostic.Err)
 }
 
 // runStudioCommand plays the source exactly like play, feeding the cockpit
