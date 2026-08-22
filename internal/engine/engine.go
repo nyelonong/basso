@@ -16,7 +16,7 @@ type Hit struct {
 	Step       int
 	Sample     string // WAV filename; empty if Note is set
 	Note       string // scientific pitch notation, e.g. "C2", "A#1"; empty if Sample is set
-	Instrument string // "bass" (default), "brass", "pluck" — meaningful only when Note is set
+	Instrument string // built-in palette name; meaningful only when Note is set
 	Length     int    // sustain, in steps — meaningful for Note hits only; ignored for Sample hits
 	Pan        float64
 	Velocity   float64
@@ -41,8 +41,8 @@ type AudioSink interface {
 	SetFire(source string, begin, sustain time.Duration, volume, pan float64)
 
 	// SetFireNote schedules a synthesized tone at note (scientific pitch
-	// notation, e.g. "C2"), voiced as instrument ("bass", "brass", "pluck"),
-	// to play at begin, sustaining for sustain, at the given volume and pan.
+	// notation, e.g. "C2"), voiced as a built-in instrument, to play at begin,
+	// sustaining for sustain, at the given volume and pan.
 	// Parallel to SetFire, but for note-based hits; unlike SetFire's sustain
 	// (currently unused by Engine.Run), sustain here is load-bearing: how
 	// long the synthesized tone rings before its envelope closes it out.

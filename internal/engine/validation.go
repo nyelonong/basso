@@ -99,9 +99,7 @@ func ValidateBar(bar Bar, inventory SoundInventory) error {
 		if hit.Length < 1 || hit.Length > 4096 {
 			return fmt.Errorf("engine: hit %d note length %d must be in [1,4096]", index, hit.Length)
 		}
-		switch hit.Instrument {
-		case "bass", "brass", "pluck":
-		default:
+		if _, ok := findInstrument(hit.Instrument); !ok {
 			return fmt.Errorf("engine: hit %d instrument %q is not supported", index, hit.Instrument)
 		}
 	}

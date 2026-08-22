@@ -331,16 +331,16 @@ func (s *beepSink) SetFireNote(note string, instrument string, begin, sustain ti
 			return
 		}
 
-		var tone beep.Streamer
-		switch instrument {
-		case "", "bass":
-			tone, err = synthesizeNote(freq, sustain)
-		case "brass":
-			tone, err = synthesizeBrass(freq, sustain)
-		case "pluck":
-			tone, err = synthesizePluck(freq, sustain)
-		default:
+		if instrument == "" {
+			instrument = "bass"
+		}
+		preset, ok := findInstrument(instrument)
+		if !ok {
 			err = fmt.Errorf("beepSink: unknown instrument %q", instrument)
+		}
+		var tone beep.Streamer
+		if err == nil {
+			tone, err = preset.synthesize(freq, sustain)
 		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "basso: SetFireNote:", err)
