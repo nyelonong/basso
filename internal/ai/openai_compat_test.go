@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -112,4 +113,57 @@ func jsonStringForTest(value string) string {
 		panic(err)
 	}
 	return string(encoded)
+}
+
+// TestOpenAICompatClient_RetriesTransientStatuses proves a gateway hiccup
+// (one 500, then success) resolves into a proposal instead of an error.
+func TestOpenAICompatClient_RetriesTransientStatuses(t *testing.T) {
+	hits := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		hits++
+		if hits == 1 {
+			response.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		writeResponseForTest(t, response,
+			openAICompatResponseForTest(`{"summary":"after retry","source":"pattern"}`))
+	}))
+	defer server.Close()
+
+	client := newOpenAICompatClient(
+		Config{Model: "test-model", Timeout: 5 * time.Second, OpenAICompatAPIKey: "k"},
+		server.Client(),
+		server.URL+"/v1",
+	)
+	got, err := client.Propose(context.Background(), testModelRequest())
+	if err != nil {
+		t.Fatalf("Propose() error = %v", err)
+	}
+	if got.Summary != "after retry" || hits != 2 {
+		t.Errorf("summary=%q hits=%d, want retried proposal after exactly 2 attempts", got.Summary, hits)
+	}
+}
+
+// TestOpenAICompatClient_RetryExhaustionReportsLastStatus proves a persistently
+// broken gateway surfaces its final status after the attempt budget.
+func TestOpenAICompatClient_RetryExhaustionReportsLastStatus(t *testing.T) {
+	hits := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		hits++
+		response.WriteHeader(http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	client := newOpenAICompatClient(
+		Config{Model: "test-model", Timeout: 5 * time.Second, OpenAICompatAPIKey: "k"},
+		server.Client(),
+		server.URL+"/v1",
+	)
+	_, err := client.Propose(context.Background(), testModelRequest())
+	if err == nil || !strings.Contains(err.Error(), "HTTP status 502") {
+		t.Fatalf("err = %v, want final 502 status", err)
+	}
+	if hits != proposalAttempts {
+		t.Errorf("hits = %d, want exhausted %d attempts", hits, proposalAttempts)
+	}
 }

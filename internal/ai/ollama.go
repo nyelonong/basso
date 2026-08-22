@@ -60,28 +60,26 @@ func (client *OllamaClient) Propose(
 	requestContext, cancel := context.WithTimeout(ctx, client.config.Timeout)
 	defer cancel()
 
-	httpRequest, err := http.NewRequestWithContext(
-		requestContext,
-		http.MethodPost,
-		client.endpoint,
-		bytes.NewReader(body),
-	)
+	result, err := postProposal(requestContext, client.client, func(attemptCtx context.Context) (*http.Request, error) {
+		httpRequest, err := http.NewRequestWithContext(
+			attemptCtx,
+			http.MethodPost,
+			client.endpoint,
+			bytes.NewReader(body),
+		)
+		if err != nil {
+			return nil, err
+		}
+		httpRequest.Header.Set("Content-Type", "application/json")
+		return httpRequest, nil
+	})
 	if err != nil {
-		return suggest.Proposal{}, fmt.Errorf("ollama: create request: %w", err)
+		return suggest.Proposal{}, fmt.Errorf("ollama: %w", err)
 	}
-	httpRequest.Header.Set("Content-Type", "application/json")
-
-	response, err := client.client.Do(httpRequest)
-	if err != nil {
-		return suggest.Proposal{}, fmt.Errorf("ollama: request failed: %w", err)
+	if !result.ok() {
+		return suggest.Proposal{}, fmt.Errorf("ollama: unexpected HTTP status %d", result.statusCode)
 	}
-	responseBody, err := readBoundedResponse(response)
-	if err != nil {
-		return suggest.Proposal{}, fmt.Errorf("ollama: read response: %w", err)
-	}
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return suggest.Proposal{}, fmt.Errorf("ollama: unexpected HTTP status %d", response.StatusCode)
-	}
+	responseBody := result.body
 
 	var envelope ollamaResponse
 	if err := decodeJSON(responseBody, &envelope, false); err != nil {
