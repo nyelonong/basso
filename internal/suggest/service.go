@@ -39,6 +39,10 @@ func NewService(model Model, preflighter Preflighter) *Service {
 	return &Service{model: model, preflighter: preflighter}
 }
 
+// maxRepairRounds bounds diagnostic-guided repair attempts after the initial
+// proposal; flaky free-model gateways often need more than one.
+const maxRepairRounds = 2
+
 // Suggest requests a proposal and locally preflights it before returning it.
 func (s *Service) Suggest(ctx context.Context, input SuggestInput) (Candidate, error) {
 	if err := validateSuggestInput(input); err != nil {
@@ -63,30 +67,39 @@ func (s *Service) Suggest(ctx context.Context, input SuggestInput) (Candidate, e
 		return Candidate{}, fmt.Errorf("suggestion context cancelled after local preflight: %w", err)
 	}
 
-	repairPrompt, err := buildRepairPrompt(input.Prompt, proposal.Source, preflightErr)
-	if err != nil {
-		return Candidate{}, err
+	firstPreflightErr := preflightErr
+	source := proposal.Source
+	for attempt := 2; attempt <= 1+maxRepairRounds; attempt++ {
+		if err := ctx.Err(); err != nil {
+			break
+		}
+		repairPrompt, err := buildRepairPrompt(input.Prompt, source, preflightErr)
+		if err != nil {
+			return Candidate{}, err
+		}
+		repaired, err := s.model.Propose(ctx, modelRequest(input, repairPrompt, source))
+		if err != nil {
+			return Candidate{}, errors.Join(
+				fmt.Errorf("first local preflight: %w", firstPreflightErr),
+				fmt.Errorf("request repaired proposal: %w", err),
+			)
+		}
+		if err := validateProposal(repaired); err != nil {
+			return Candidate{}, errors.Join(
+				fmt.Errorf("first local preflight: %w", firstPreflightErr),
+				fmt.Errorf("validate repaired proposal: %w", err),
+			)
+		}
+		preflightErr = s.preflighter.Preflight(ctx, repaired.Source, 0, 15)
+		if preflightErr == nil {
+			return candidateFromProposal(input, repaired, attempt), nil
+		}
+		source = repaired.Source
 	}
-	repaired, err := s.model.Propose(ctx, modelRequest(input, repairPrompt, proposal.Source))
-	if err != nil {
-		return Candidate{}, errors.Join(
-			fmt.Errorf("first local preflight: %w", preflightErr),
-			fmt.Errorf("request repaired proposal: %w", err),
-		)
-	}
-	if err := validateProposal(repaired); err != nil {
-		return Candidate{}, errors.Join(
-			fmt.Errorf("first local preflight: %w", preflightErr),
-			fmt.Errorf("validate repaired proposal: %w", err),
-		)
-	}
-	if repairErr := s.preflighter.Preflight(ctx, repaired.Source, 0, 15); repairErr != nil {
-		return Candidate{}, errors.Join(
-			fmt.Errorf("first local preflight: %w", preflightErr),
-			fmt.Errorf("repaired local preflight: %w", repairErr),
-		)
-	}
-	return candidateFromProposal(input, repaired, 2), nil
+	return Candidate{}, errors.Join(
+		fmt.Errorf("first local preflight: %w", firstPreflightErr),
+		fmt.Errorf("repaired local preflight: %w", preflightErr),
+	)
 }
 
 func validateSuggestInput(input SuggestInput) error {

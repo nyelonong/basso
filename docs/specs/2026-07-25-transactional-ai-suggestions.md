@@ -338,7 +338,7 @@ tools.
 | 6 | Provider configuration | Explicit provider and model via flags or environment; no model-name default |
 | 7 | Model output | Strict `{summary, source}` object; complete source rather than a patch |
 | 8 | Trust boundary | Compile, evaluate, and structurally validate locally regardless of provider schema |
-| 9 | Repair loop | At most one diagnostic-guided retry |
+| 9 | Repair loop | At most one diagnostic-guided retry (amended 2026-08-22: at most two, see docs/specs/2026-08-22-studio-tui.md era hardening) |
 | 10 | Validation horizon | Bars 0 through 15, fresh VM per bar, 250 ms per evaluation |
 | 11 | Candidate storage | Gitignored `.basso/candidates/` with source plus versioned metadata |
 | 12 | Apply safety | Revalidate, require unchanged base hash, create backup, then atomic replace |

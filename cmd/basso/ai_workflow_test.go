@@ -268,6 +268,7 @@ func TestAIWorkflow_InvalidGeneratedRevisionNeverInterruptsActiveAudio(t *testin
 		proposals: []suggest.Proposal{
 			{Summary: "broken initial", Source: invalidInitial},
 			{Summary: "broken repair", Source: invalidRepair},
+			{Summary: "still broken repair", Source: invalidRepair},
 		},
 	}
 	deps := aiWorkflowCommandDependencies(fixture, model, io.Discard)
@@ -279,8 +280,8 @@ func TestAIWorkflow_InvalidGeneratedRevisionNeverInterruptsActiveAudio(t *testin
 	if err == nil {
 		t.Fatal("suggest runCommand() error = nil, want both invalid proposals rejected")
 	}
-	if model.callCount() != 2 {
-		t.Errorf("model calls = %d, want exactly 2", model.callCount())
+	if model.callCount() != 3 {
+		t.Errorf("model calls = %d, want exactly 3 (initial + repair budget)", model.callCount())
 	}
 	for _, want := range []string{
 		"first local preflight",

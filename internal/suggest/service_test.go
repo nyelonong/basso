@@ -99,25 +99,50 @@ func TestService_InvalidFirstProposalRepairsOnce(t *testing.T) {
 
 func TestService_InvalidRepairCreatesNoCandidate(t *testing.T) {
 	firstDiagnostic := errors.New("bar 3: invalid note")
-	secondDiagnostic := errors.New("bar 9: invalid velocity")
+	lastDiagnostic := errors.New("bar 9: invalid velocity")
 	model := &scriptedModel{responses: []scriptedResponse{
 		{proposal: Proposal{Summary: "bad note", Source: "first bad source"}},
 		{proposal: Proposal{Summary: "bad velocity", Source: "second bad source"}},
+		{proposal: Proposal{Summary: "still bad", Source: "third bad source"}},
 	}}
-	preflighter := &scriptedPreflighter{errs: []error{firstDiagnostic, secondDiagnostic}}
+	preflighter := &scriptedPreflighter{errs: []error{firstDiagnostic, errors.New("middle"), lastDiagnostic}}
 
 	candidate, err := NewService(model, preflighter).Suggest(context.Background(), validSuggestInput())
 	if err == nil {
 		t.Fatal("Suggest() error = nil, want repaired-proposal failure")
 	}
-	if !strings.Contains(err.Error(), firstDiagnostic.Error()) || !strings.Contains(err.Error(), secondDiagnostic.Error()) {
-		t.Errorf("Suggest() error = %q, want both diagnostics", err)
+	if !strings.Contains(err.Error(), firstDiagnostic.Error()) || !strings.Contains(err.Error(), lastDiagnostic.Error()) {
+		t.Errorf("Suggest() error = %q, want first and last diagnostics", err)
 	}
 	if !reflect.DeepEqual(candidate, Candidate{}) {
 		t.Errorf("candidate = %#v, want zero candidate", candidate)
 	}
-	if len(model.requests) != 2 || len(preflighter.calls) != 2 {
-		t.Errorf("model/preflight calls = %d/%d, want 2/2", len(model.requests), len(preflighter.calls))
+	if len(model.requests) != 1+maxRepairRounds || len(preflighter.calls) != 1+maxRepairRounds {
+		t.Errorf("model/preflight calls = %d/%d, want %d", len(model.requests), len(preflighter.calls), 1+maxRepairRounds)
+	}
+}
+
+func TestService_SecondRepairConverges(t *testing.T) {
+	model := &scriptedModel{responses: []scriptedResponse{
+		{proposal: Proposal{Summary: "bad note", Source: "first bad source"}},
+		{proposal: Proposal{Summary: "bad length", Source: "second bad source"}},
+		{proposal: Proposal{Summary: "fixed", Source: "repaired source"}},
+	}}
+	preflighter := &scriptedPreflighter{errs: []error{
+		errors.New("bar 3: invalid note"),
+		errors.New("bar 9: length 0"),
+		nil,
+	}}
+
+	candidate, err := NewService(model, preflighter).Suggest(context.Background(), validSuggestInput())
+	if err != nil {
+		t.Fatalf("Suggest() error = %v", err)
+	}
+	if candidate.Metadata.Attempts != 3 {
+		t.Errorf("Attempts = %d, want 3", candidate.Metadata.Attempts)
+	}
+	if string(candidate.Source) != "repaired source" {
+		t.Errorf("source = %q, want third proposal", candidate.Source)
 	}
 }
 
