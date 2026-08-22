@@ -40,6 +40,8 @@ type transportStateMsg struct{ state studioTransportState }
 
 type suggestPromptMsg struct{}
 
+type initialSuggestMsg struct{ prompt string }
+
 type suggestionReadyMsg struct {
 	generation int
 	candidate  suggest.Candidate
@@ -124,6 +126,7 @@ type studioModel struct {
 	diff           string
 	lastError      string
 	cancelSuggest  context.CancelFunc
+	initialPrompt  string
 	sourcePath     string
 	services       studioServices
 	store          *suggest.Store
@@ -155,6 +158,10 @@ func (m studioModel) Init() tea.Cmd {
 	commands := []tea.Cmd{m.spinner.Tick, secondTick()}
 	if m.mode == studioPrompting {
 		commands = append(commands, textinput.Blink)
+	}
+	if m.initialPrompt != "" {
+		prompt := m.initialPrompt
+		commands = append(commands, func() tea.Msg { return initialSuggestMsg{prompt: prompt} })
 	}
 	return tea.Batch(commands...)
 }
@@ -310,6 +317,18 @@ func (m studioModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.prompt = input
 		m.mode = studioPrompting
 		return m, textinput.Blink
+	case initialSuggestMsg:
+		if m.mode != studioIdle || strings.TrimSpace(msg.prompt) == "" {
+			return m, nil
+		}
+		input := textinput.New()
+		input.Placeholder = "describe the change"
+		input.SetValue(msg.prompt)
+		input.Focus()
+		m.prompt = input
+		m.mode = studioPrompting
+		m.initialPrompt = ""
+		return m, func() tea.Msg { return tea.KeyMsg{Type: tea.KeyEnter} }
 	case barMsg:
 		m.played = true
 		m.bar = msg.bar
@@ -831,7 +850,7 @@ func runStudioCommand(ctx context.Context, args []string, deps commandDependenci
 	if err != nil {
 		return err
 	}
-	promptAfterCreate := false
+	initialPrompt := ""
 	if flags.source == "" {
 		result, err := runStudioPicker(deps)
 		if err != nil {
@@ -841,9 +860,9 @@ func runStudioCommand(ctx context.Context, args []string, deps commandDependenci
 			return nil
 		}
 		flags.source = result.path
-		promptAfterCreate = result.promptAfterCreate
+		initialPrompt = result.initialPrompt
 	}
-	return runStudioSession(ctx, flags, deps, promptAfterCreate)
+	return runStudioSession(ctx, flags, deps, initialPrompt)
 }
 
 func runStudioPicker(deps commandDependencies) (studioPickerResult, error) {
@@ -866,7 +885,7 @@ func runStudioPicker(deps commandDependencies) (studioPickerResult, error) {
 	return picker.result, nil
 }
 
-func runStudioSession(ctx context.Context, flags studioFlags, deps commandDependencies, promptAfterCreate bool) error {
+func runStudioSession(ctx context.Context, flags studioFlags, deps commandDependencies, initialPrompt string) error {
 	path, err := absoluteFrom(deps.invocationDir, flags.source)
 	if err != nil {
 		return fmt.Errorf("resolve source path: %w", err)
@@ -919,10 +938,7 @@ func runStudioSession(ctx context.Context, flags studioFlags, deps commandDepend
 	}, soundsPath)
 	model.transport = transport
 	model.transportState = transportPlaying
-	if promptAfterCreate {
-		updated, _ := model.Update(suggestPromptMsg{})
-		model = updated.(studioModel)
-	}
+	model.initialPrompt = initialPrompt
 	program := deps.newStudioProgram(model, tea.WithAltScreen())
 
 	forwardDone := make(chan struct{})

@@ -28,8 +28,9 @@ at the next bar. Ctrl-C to stop.
     basso studio patterns/basic-groove.fnl
 
 Without a file, studio opens a flat picker for `.fnl` files in the launch
-directory. Press `n` for a silent blank pattern or `N` to create one and open
-the AI prompt immediately. During playback, `space` pauses/resumes at a bar
+directory. Press `n` to name a silent blank pattern. Press `N` to describe a
+new pattern once; studio derives a unique filename and submits that description
+to the AI automatically. During playback, `space` pauses/resumes at a bar
 boundary, `x` stops and resets to bar 0, and `p` plays again.
 
 Press `s` to describe an edit. After local validation, studio automatically

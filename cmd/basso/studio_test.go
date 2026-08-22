@@ -214,23 +214,24 @@ func TestRunStudioCommand_NoFilePicksAndPlays(t *testing.T) {
 	}
 }
 
-func TestRunStudioCommand_NewPromptStartsPrompting(t *testing.T) {
+func TestRunStudioCommand_NewPromptPassesInitialDescription(t *testing.T) {
 	dir := t.TempDir()
 	deps := testCommandDependencies(dir, io.Discard, io.Discard)
 	deps.newProvider = func(string, engine.DiagnosticReporter) (closablePatternProvider, error) {
 		return &countingProvider{stops: 2, stopErr: errors.New("stop")}, nil
 	}
 	deps.newSink = newFakeSink
+	prompt := "create a dangdut beat"
 	deps.newStudioProgram = func(model tea.Model, _ ...tea.ProgramOption) programRunner {
 		switch model := model.(type) {
 		case studioPickerModel:
 			updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'N'}})
-			updated, _ = updated.(studioPickerModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("generated")})
+			updated, _ = updated.(studioPickerModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(prompt)})
 			updated, _ = updated.(studioPickerModel).Update(tea.KeyMsg{Type: tea.KeyEnter})
 			return fixedStudioProgram{model: updated}
 		case studioModel:
-			if model.mode != studioPrompting {
-				t.Errorf("new-from-prompt studio mode = %v, want prompting", model.mode)
+			if model.initialPrompt != prompt {
+				t.Errorf("new-from-prompt initial prompt = %q, want %q", model.initialPrompt, prompt)
 			}
 			return fixedStudioProgram{model: model}
 		default:
@@ -370,12 +371,16 @@ func TestStudioModel_QuitAndPlaybackDone(t *testing.T) {
 type fakeStudioModel struct {
 	proposal suggest.Proposal
 	err      error
+	requests *[]suggest.ModelRequest
 }
 
 func (m fakeStudioModel) Propose(
 	ctx context.Context,
 	request suggest.ModelRequest,
 ) (suggest.Proposal, error) {
+	if m.requests != nil {
+		*m.requests = append(*m.requests, request)
+	}
 	return m.proposal, m.err
 }
 
@@ -438,6 +443,47 @@ func studioEnvConfig(getenv func(string) string) func(string) string {
 }
 
 const validProposalSource = "(bpm 120)\n(fn pattern [bar] [])\npattern\n"
+
+func TestStudioModel_InitialPromptSubmitsAutomatically(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "pattern.fnl")
+	if err := os.WriteFile(source, []byte(validProposalSource), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var requests []suggest.ModelRequest
+	deps := studioSuggestDeps(t, dir, fakeStudioModel{
+		proposal: suggest.Proposal{Summary: "new beat", Source: validProposalSource},
+		requests: &requests,
+	})
+	deps.getenv = studioEnvConfig(deps.getenv)
+	model := newStudioModel("pattern.fnl")
+	model.sourcePath = source
+	model.services = studioTestServices(deps, dir)
+	model.initialPrompt = "create a dangdut beat"
+	batch, ok := model.Init()().(tea.BatchMsg)
+	if !ok || len(batch) == 0 {
+		t.Fatal("Init() did not schedule the initial prompt")
+	}
+	initial, ok := batch[len(batch)-1]().(initialSuggestMsg)
+	if !ok {
+		t.Fatalf("last Init command = %T, want initialSuggestMsg", batch[len(batch)-1]())
+	}
+
+	updated, enterCommand := model.Update(initial)
+	if enterCommand == nil || updated.(studioModel).mode != studioPrompting {
+		t.Fatal("initial prompt did not enter prompting mode and schedule submission")
+	}
+	updated, suggestCommand := updated.Update(enterCommand())
+	if suggestCommand == nil || updated.(studioModel).mode != studioRunning {
+		t.Fatal("initial prompt did not submit automatically")
+	}
+	if _, ok := suggestCommand().(suggestionReadyMsg); !ok {
+		t.Fatal("automatic initial suggestion did not complete")
+	}
+	if len(requests) != 1 || requests[0].Prompt != "create a dangdut beat" {
+		t.Fatalf("model requests = %+v, want one original prompt", requests)
+	}
+}
 
 // TestStudioModel_SuggestKeyOpensPrompt proves s enters prompting mode and
 // escape leaves it without side effects.

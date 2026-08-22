@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -26,20 +27,20 @@ const (
 )
 
 type studioPickerResult struct {
-	path              string
-	promptAfterCreate bool
-	quit              bool
+	path          string
+	initialPrompt string
+	quit          bool
 }
 
 type studioPickerModel struct {
-	dir         string
-	files       []string
-	cursor      int
-	mode        studioPickerMode
-	name        textinput.Model
-	promptAfter bool
-	lastError   string
-	result      studioPickerResult
+	dir        string
+	files      []string
+	cursor     int
+	mode       studioPickerMode
+	name       textinput.Model
+	fromPrompt bool
+	lastError  string
+	result     studioPickerResult
 }
 
 func newStudioPickerModel(dir string) (studioPickerModel, error) {
@@ -77,12 +78,19 @@ func (model studioPickerModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			model.lastError = ""
 			return model, nil
 		case "enter":
-			path, err := createStudioPattern(model.dir, model.name.Value())
+			var path, prompt string
+			var err error
+			if model.fromPrompt {
+				prompt = model.name.Value()
+				path, err = createStudioPatternFromPrompt(model.dir, prompt)
+			} else {
+				path, err = createStudioPattern(model.dir, model.name.Value())
+			}
 			if err != nil {
 				model.lastError = err.Error()
 				return model, nil
 			}
-			model.result = studioPickerResult{path: path, promptAfterCreate: model.promptAfter}
+			model.result = studioPickerResult{path: path, initialPrompt: prompt}
 			return model, tea.Quit
 		}
 		var command tea.Cmd
@@ -109,10 +117,14 @@ func (model studioPickerModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case "n", "N":
 		input := textinput.New()
-		input.Placeholder = "pattern.fnl"
+		model.fromPrompt = key.String() == "N"
+		if model.fromPrompt {
+			input.Placeholder = "describe the music"
+		} else {
+			input.Placeholder = "pattern.fnl"
+		}
 		input.Focus()
 		model.name = input
-		model.promptAfter = key.String() == "N"
 		model.mode = pickerNaming
 		model.lastError = ""
 		return model, textinput.Blink
@@ -124,7 +136,7 @@ func (model studioPickerModel) View() string {
 	var out strings.Builder
 	out.WriteString("basso studio — choose pattern\n\n")
 	if model.mode == pickerNaming {
-		if model.promptAfter {
+		if model.fromPrompt {
 			out.WriteString("new pattern from prompt: ")
 		} else {
 			out.WriteString("new blank pattern: ")
@@ -166,21 +178,75 @@ func createStudioPattern(dir, requestedName string) (string, error) {
 		return "", errors.New("pattern name is required")
 	}
 	path := filepath.Join(dir, name)
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-	if err != nil {
+	if err := writeBlankPattern(path); err != nil {
 		if errors.Is(err, os.ErrExist) {
 			return "", fmt.Errorf("pattern %s already exists", name)
 		}
-		return "", fmt.Errorf("create pattern: %w", err)
+		return "", err
+	}
+	return path, nil
+}
+
+func createStudioPatternFromPrompt(dir, prompt string) (string, error) {
+	if strings.TrimSpace(prompt) == "" {
+		return "", errors.New("music description is required")
+	}
+	stem := patternPromptStem(prompt)
+	for number := 1; ; number++ {
+		name := stem + ".fnl"
+		if number > 1 {
+			name = fmt.Sprintf("%s-%d.fnl", stem, number)
+		}
+		path := filepath.Join(dir, name)
+		err := writeBlankPattern(path)
+		if errors.Is(err, os.ErrExist) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		return path, nil
+	}
+}
+
+func patternPromptStem(prompt string) string {
+	var stem strings.Builder
+	separator := false
+	letters := 0
+	for _, value := range strings.ToLower(prompt) {
+		if unicode.IsLetter(value) || unicode.IsDigit(value) {
+			if separator && stem.Len() > 0 {
+				stem.WriteByte('-')
+			}
+			stem.WriteRune(value)
+			separator = false
+			letters++
+			if letters == 48 {
+				break
+			}
+		} else {
+			separator = true
+		}
+	}
+	if stem.Len() == 0 {
+		return "new-pattern"
+	}
+	return stem.String()
+}
+
+func writeBlankPattern(path string) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return fmt.Errorf("create pattern: %w", err)
 	}
 	if _, err := io.WriteString(file, blankPatternSource); err != nil {
 		_ = file.Close()
 		_ = os.Remove(path)
-		return "", fmt.Errorf("write pattern: %w", err)
+		return fmt.Errorf("write pattern: %w", err)
 	}
 	if err := file.Close(); err != nil {
 		_ = os.Remove(path)
-		return "", fmt.Errorf("close pattern: %w", err)
+		return fmt.Errorf("close pattern: %w", err)
 	}
-	return path, nil
+	return nil
 }
