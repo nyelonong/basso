@@ -51,6 +51,17 @@ describe("player accessibility contract", () => {
     expect(rule(playerCss, ".library-item")).toContain("min-height: 44px");
   });
 
+  it("gives the shared banner button and the link field a 44px touch target", () => {
+    expect(rule(playerCss, ".shared-banner button")).toContain("min-height: 44px");
+    expect(rule(playerCss, ".share-field-wrap input")).toContain("min-height: 44px");
+  });
+
+  it("keeps the shared banner and notice readable", () => {
+    expect(rule(playerCss, ".shared-banner")).toContain("var(--panel-text)");
+    expect(rule(playerCss, '.shared-banner[data-kind="error"]')).toContain("var(--error)");
+    expect(rule(playerCss, ".share-notice")).toContain("var(--panel-muted)");
+  });
+
   it("switches quiet cells to light text so their step numbers stay readable", () => {
     expect(gridCss).toMatch(/\[data-soft="true"\][^{]*\{[^}]*color: var\(--panel-text\)/);
   });

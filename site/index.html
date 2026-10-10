@@ -69,6 +69,8 @@
           </div>
           <p class="library-note" data-storage-note hidden>Saving is off in this browser. Export patterns to keep them.</p>
           <nav aria-label="Pattern list">
+            <h3 data-shared-heading hidden>Shared with you</h3>
+            <ul class="library-list" data-list="shared"></ul>
             <h3>Yours</h3>
             <ul class="library-list" data-list="user"></ul>
             <p class="library-empty" data-user-empty>Nothing saved yet. Edit an example to make your own copy.</p>
@@ -84,6 +86,11 @@
           <button type="button" data-hint-dismiss aria-label="Dismiss hint">×</button>
         </p>
 
+        <div class="shared-banner" data-shared-banner role="status" hidden>
+          <p data-shared-message></p>
+          <button type="button" data-shared-save>Save a copy</button>
+        </div>
+
         <div class="entry-head">
           <div class="entry-title">
             <label class="visually-hidden" for="entry-name">Pattern name</label>
@@ -93,8 +100,17 @@
           <div class="entry-actions">
             <button type="button" data-convert hidden>Convert to code</button>
             <button type="button" data-duplicate>Duplicate</button>
+            <button type="button" data-share>Share</button>
             <button type="button" data-export>Export .fnl</button>
             <button type="button" data-delete>Delete</button>
+          </div>
+        </div>
+
+        <div class="share-tools">
+          <p class="share-notice" data-share-notice role="status"></p>
+          <div class="share-field-wrap" data-share-field-wrap hidden>
+            <label class="visually-hidden" for="share-field">Link to share</label>
+            <input id="share-field" data-share-field readonly />
           </div>
         </div>
 

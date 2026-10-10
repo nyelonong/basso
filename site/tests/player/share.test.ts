@@ -9,9 +9,11 @@ import {
   encodePayload,
   MAX_DECODED_BYTES,
   MAX_LINK_LENGTH,
+  MAX_NAME_LENGTH,
   readPayload,
   ShareError,
   serializePattern,
+  shareableName,
   sharingSupported,
   type ShareErrorReason,
   type SharedPattern,
@@ -212,10 +214,45 @@ describe("reading the address", () => {
   it.each([
     ["#1.abc", "1.abc"],
     ["1.abc", "1.abc"],
+    ["#2.abc", "2.abc"],
+    ["#12.abc", "12.abc"],
     ["", null],
     ["#", null],
+    ["#main", null],
+    ["#abc", null],
+    ["#1abc", null],
   ])("reads %j", (hash, expected) => {
     expect(readPayload(hash)).toBe(expected);
+  });
+});
+
+describe("naming a shared pattern", () => {
+  const opens = async (name: string) => {
+    const pattern: SharedPattern = { ...gridPattern, name };
+    return decodePayload(await encodePayload(pattern), samples);
+  };
+
+  it("keeps a normal name", () => {
+    expect(shareableName("my groove ♪")).toBe("my groove ♪");
+  });
+
+  it("removes characters the decoder refuses, and trims", async () => {
+    const cleaned = shareableName("  a\u202Eb\u200Bc\nd\ud800  ");
+    expect(cleaned).toBe("abcd");
+    expect((await opens(cleaned)).name).toBe("abcd");
+  });
+
+  it("cuts a long name to 100 characters without splitting a surrogate pair", async () => {
+    const long = "🥁".repeat(80);
+    const cut = shareableName(long);
+    expect(cut.length).toBeLessThanOrEqual(MAX_NAME_LENGTH);
+    expect(cut).toBe("🥁".repeat(50));
+    expect((await opens(cut)).name).toBe(cut);
+  });
+
+  it.each(["", "   ", "\u3164", "\u2800", "\u202E"])("falls back for %j", async (blank) => {
+    expect(shareableName(blank)).toBe("shared pattern");
+    expect((await opens(shareableName(blank))).name).toBe("shared pattern");
   });
 });
 

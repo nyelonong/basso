@@ -27,6 +27,27 @@ describe("Basso player page contract", () => {
     expect(page).toContain("https://github.com/nyelonong/basso");
   });
 
+  it("offers a Share button and a visible, announced result area", () => {
+    expect(page).toMatch(/<button[^>]*data-share[\s>]/);
+    expect(page).toMatch(/<p[^>]*data-share-notice[^>]*role="status"/);
+    expect(page).toMatch(/<input[^>]*data-share-field[^>]*readonly/);
+  });
+
+  it("has a shared-pattern banner that starts hidden and offers Save a copy", () => {
+    expect(page).toMatch(/<div[^>]*data-shared-banner[^>]*role="status"[^>]*hidden/);
+    expect(page).toMatch(/<button[^>]*data-shared-save[^>]*>Save a copy<\/button>/);
+  });
+
+  it("lists shared patterns under their own heading in the sidebar", () => {
+    expect(page).toContain("Shared with you");
+    expect(page).toMatch(/data-list="shared"/);
+  });
+
+  it("never builds page markup from text, so shared names cannot inject HTML", () => {
+    const code = readFileSync(resolve(import.meta.dirname, "../src/player/main.ts"), "utf8");
+    expect(code).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write/);
+  });
+
   it("has no AI or hype wording", () => {
     expect(page).not.toMatch(/\bAI\b|supercharge|unleash|seamless|revolutionary/i);
   });

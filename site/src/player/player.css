@@ -381,6 +381,73 @@ a {
   display: none;
 }
 
+.shared-banner {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  color: var(--panel-text);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  justify-content: space-between;
+  margin: 0;
+  padding: 0.5rem 0.5rem 0.5rem 1rem;
+}
+
+.shared-banner[hidden] {
+  display: none;
+}
+
+.shared-banner[data-kind="error"] {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.shared-banner p {
+  margin: 0;
+  min-width: 0;
+}
+
+.shared-banner button {
+  background: var(--panel-raised);
+  border: 1px solid var(--line);
+  color: var(--panel-text);
+  cursor: pointer;
+  font: 400 0.78rem/1.1 var(--font-mono);
+  min-height: 44px;
+  padding: 0 0.9rem;
+}
+
+.shared-banner button[hidden] {
+  display: none;
+}
+
+.share-tools {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.share-notice {
+  color: var(--panel-muted);
+  font: 400 0.78rem/1.4 var(--font-mono);
+  margin: 0;
+  min-height: 1.1rem;
+}
+
+.share-field-wrap[hidden] {
+  display: none;
+}
+
+.share-field-wrap input {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--panel-text);
+  font: 400 0.78rem/1 var(--font-mono);
+  min-height: 44px;
+  padding: 0 0.75rem;
+  width: 100%;
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);

@@ -137,9 +137,11 @@ export function buildLink(base: string, payload: string): string {
   return link;
 }
 
+// Only a fragment that starts with a version tag is a link; others, such as the
+// skip link's "#main", belong to the page.
 export function readPayload(hash: string): string | null {
   const payload = hash.startsWith("#") ? hash.slice(1) : hash;
-  return payload === "" ? null : payload;
+  return /^\d+\./.test(payload) ? payload : null;
 }
 
 const shapeError = (detail: string) => new ShareError("shape", detail);
@@ -151,6 +153,18 @@ const FORBIDDEN_NAME_CHARACTERS = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Cs}]/u;
 // A name needs at least one character that shows: not whitespace, not an invisible
 // filler or variation selector, not the blank braille cell, and not a lone combining mark.
 const VISIBLE_NAME_CHARACTER = /[^\s\p{Default_Ignorable_Code_Point}\p{M}\u2800]/u;
+
+const FALLBACK_NAME = "shared pattern";
+
+// Makes a user-typed name acceptable to decodePayload, so a link always opens for
+// whoever receives it.
+export function shareableName(name: string): string {
+  const cleaned = Array.from(name.replace(new RegExp(FORBIDDEN_NAME_CHARACTERS.source, "gu"), "")).reduce(
+    (kept, char) => (kept.length + char.length <= MAX_NAME_LENGTH ? kept + char : kept),
+    "",
+  ).trim();
+  return VISIBLE_NAME_CHARACTER.test(cleaned) ? cleaned : FALLBACK_NAME;
+}
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

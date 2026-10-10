@@ -6,9 +6,19 @@ import { createWebAudioSink, type WebAudioSink } from "./audio";
 import type { createEditor } from "./editor";
 import { gridToFennel } from "./grid";
 import { mountBarView, mountGridEditor } from "./grid-view";
-import { Library, STARTER_ID, type Entry } from "./library";
+import { Library, SHARED_ID, STARTER_ID, type Entry } from "./library";
 import { stepSeconds, type AudioSink, type Bar, type Diagnostic, type GridPattern } from "./model";
 import { Session } from "./session";
+import {
+  buildLink,
+  decodePayload,
+  describeShareError,
+  encodePayload,
+  readPayload,
+  ShareError,
+  shareableName,
+  sharingSupported,
+} from "./share";
 
 const SELECTED_KEY = "basso.selected";
 const HINT_KEY = "basso.hintDismissed";
@@ -62,6 +72,16 @@ const gridMode = required<HTMLElement>("[data-grid-mode]");
 const codeMode = required<HTMLElement>("[data-code-mode]");
 const diagnosticPanel = required<HTMLElement>("[data-diagnostic]");
 const libraryToggle = required<HTMLButtonElement>("[data-library-toggle]");
+const shareButton = required<HTMLButtonElement>("[data-share]");
+const shareNotice = required<HTMLElement>("[data-share-notice]");
+const shareFieldWrap = required<HTMLElement>("[data-share-field-wrap]");
+const shareField = required<HTMLInputElement>("[data-share-field]");
+const sharedBanner = required<HTMLElement>("[data-shared-banner]");
+const sharedMessage = required<HTMLElement>("[data-shared-message]");
+const sharedSave = required<HTMLButtonElement>("[data-shared-save]");
+
+const SHARED_BANNER_TEXT = "Shared pattern. Press Play to hear it. Editing makes your own copy.";
+const CODE_SHARE_TEXT = "Code patterns cannot be shared as links yet. Use Export .fnl.";
 
 const library = new Library(storage);
 let selected: Entry = library.get(recall(SELECTED_KEY) ?? "") ?? library.get(STARTER_ID)!;
@@ -71,9 +91,32 @@ let loadingAudio: Promise<void> | null = null;
 let loadingEditor = false;
 let upcoming: { n: number; bar: Bar | null; start: number }[] = [];
 let shownBar: number | null = null;
+let openToken = 0;
 
 function announce(message: string) {
   status.textContent = message;
+}
+
+function showBanner(kind: "shared" | "error", text: string) {
+  sharedBanner.dataset.kind = kind;
+  sharedMessage.textContent = text;
+  sharedSave.hidden = kind === "error";
+  sharedBanner.hidden = false;
+}
+
+function hideBanner() {
+  sharedBanner.hidden = true;
+}
+
+function clearShareResult() {
+  shareNotice.textContent = "";
+  shareFieldWrap.hidden = true;
+}
+
+function clearLinkFromAddress() {
+  // Until the runtime is ready the link has not been opened yet, so keep it.
+  if (!session) return;
+  if (readPayload(location.hash) !== null) history.replaceState(null, "", location.pathname + location.search);
 }
 
 function describe(diagnostic: Diagnostic): string {
@@ -127,7 +170,12 @@ let session: Session | null = null;
 
 function ownCopy(): Entry {
   if (!selected.readOnly) return selected;
+  const wasShared = selected.shared === true;
   const copy = library.duplicate(selected.id);
+  if (wasShared) {
+    library.closeShared();
+    clearLinkFromAddress();
+  }
   remember(SELECTED_KEY, copy.id);
   announce(`Saved your changes as ${copy.name}.`);
   return copy;
@@ -135,6 +183,7 @@ function ownCopy(): Entry {
 
 function onGridChange(grid: GridPattern) {
   if (selected.kind !== "grid") return;
+  if (sharedBanner.dataset.kind === "error") hideBanner();
   const target = ownCopy();
   library.save({ ...target, kind: "grid", grid });
   selected = library.get(target.id)!;
@@ -166,30 +215,31 @@ function showDiagnostic(diagnostic: Diagnostic | null) {
 
 function renderList() {
   const entries = library.list();
-  for (const [list, readOnly] of [
-    [required<HTMLUListElement>('[data-list="user"]'), false],
-    [required<HTMLUListElement>('[data-list="examples"]'), true],
-  ] as const) {
-    list.replaceChildren(
-      ...entries
-        .filter((e) => e.readOnly === readOnly)
-        .map((entry) => {
-          const button = document.createElement("button");
-          button.type = "button";
-          button.className = "library-item";
-          button.textContent = entry.name;
-          const kind = document.createElement("span");
-          kind.textContent = entry.kind;
-          button.append(kind);
-          if (entry.id === selected.id) button.setAttribute("aria-current", "true");
-          button.addEventListener("click", () => select(entry.id));
-          const item = document.createElement("li");
-          item.append(button);
-          return item;
-        }),
+  const groups: [string, (entry: Entry) => boolean][] = [
+    ["shared", (entry) => entry.shared === true],
+    ["user", (entry) => !entry.readOnly],
+    ["examples", (entry) => entry.readOnly && !entry.shared],
+  ];
+  for (const [name, include] of groups) {
+    required<HTMLUListElement>(`[data-list="${name}"]`).replaceChildren(
+      ...entries.filter(include).map((entry) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "library-item";
+        button.textContent = entry.name;
+        const kind = document.createElement("span");
+        kind.textContent = entry.kind;
+        button.append(kind);
+        if (entry.id === selected.id) button.setAttribute("aria-current", "true");
+        button.addEventListener("click", () => select(entry.id));
+        const item = document.createElement("li");
+        item.append(button);
+        return item;
+      }),
     );
   }
-  required<HTMLElement>("[data-user-empty]").hidden = entries.some((e) => !e.readOnly);
+  required<HTMLElement>("[data-shared-heading]").hidden = !entries.some((entry) => entry.shared);
+  required<HTMLElement>("[data-user-empty]").hidden = entries.some((entry) => !entry.readOnly);
   required<HTMLElement>("[data-storage-note]").hidden = library.persistent;
 }
 
@@ -197,6 +247,11 @@ function renderEntry({ keepEditors = false } = {}) {
   nameInput.value = selected.name;
   nameInput.readOnly = selected.readOnly;
   badge.hidden = !selected.readOnly;
+  badge.textContent = selected.shared
+    ? "Shared with you: edits make your own copy"
+    : "Example: edits make your own copy";
+  if (selected.shared) showBanner("shared", SHARED_BANNER_TEXT);
+  else if (sharedBanner.dataset.kind === "shared") hideBanner();
   deleteButton.hidden = selected.readOnly;
   convertButton.hidden = selected.kind !== "grid";
   gridMode.hidden = selected.kind !== "grid";
@@ -208,11 +263,15 @@ function renderEntry({ keepEditors = false } = {}) {
   renderList();
 }
 
-function select(id: string) {
+function select(id: string, { persist = true } = {}) {
   const entry = library.get(id);
   if (!entry) return;
+  openToken++;
   selected = entry;
-  remember(SELECTED_KEY, id);
+  if (!entry.shared && persist) remember(SELECTED_KEY, id);
+  hideBanner();
+  clearShareResult();
+  if (!entry.shared) clearLinkFromAddress();
   renderEntry();
   showDiagnostic(null);
   if (session) {
@@ -344,6 +403,81 @@ convertButton.addEventListener("click", () => {
   select(created.id);
 });
 
+async function copyLink(link: string, note: string) {
+  try {
+    await navigator.clipboard.writeText(link);
+    shareFieldWrap.hidden = true;
+    shareNotice.textContent = `Link copied.${note}`;
+  } catch {
+    shareField.value = link;
+    shareFieldWrap.hidden = false;
+    shareField.focus();
+    shareField.select();
+    shareNotice.textContent = `Copy this link.${note}`;
+  }
+}
+
+shareButton.addEventListener("click", async () => {
+  clearShareResult();
+  if (selected.kind !== "grid") {
+    shareNotice.textContent = CODE_SHARE_TEXT;
+    return;
+  }
+  if (!sharingSupported()) {
+    shareNotice.textContent = describeShareError(new ShareError("unsupported", "no stream support"));
+    return;
+  }
+  const entryId = selected.id;
+  const name = shareableName(selected.name);
+  const note = name === selected.name.trim() ? "" : " The name was shortened or cleaned in the link.";
+  try {
+    const payload = await encodePayload({ name, kind: "grid", grid: selected.grid });
+    if (selected.id !== entryId) return;
+    await copyLink(buildLink(`${location.origin}/`, payload), note);
+  } catch (error) {
+    if (error instanceof ShareError) shareNotice.textContent = describeShareError(error);
+    else {
+      console.error(error);
+      shareNotice.textContent = "The link could not be made.";
+    }
+  }
+});
+
+// Opens a link found in the address bar. Returns false when the address holds no link.
+async function openFromAddress(): Promise<boolean> {
+  const payload = readPayload(location.hash);
+  if (payload === null || !session) return false;
+  const token = ++openToken;
+  let problem: string;
+  if (!sharingSupported()) {
+    problem = describeShareError(new ShareError("unsupported", "no stream support"));
+  } else {
+    try {
+      const shared = await decodePayload(payload, SAMPLE_NAMES);
+      if (token === openToken) select(library.openShared(shared).id);
+      return true;
+    } catch (error) {
+      if (error instanceof ShareError) problem = describeShareError(error);
+      else {
+        console.error(error);
+        problem = "This link could not be opened.";
+      }
+    }
+  }
+  if (token !== openToken) return true;
+  select(STARTER_ID, { persist: false });
+  showBanner("error", problem);
+  return true;
+}
+
+sharedSave.addEventListener("click", () => {
+  const copy = library.duplicate(SHARED_ID);
+  library.closeShared();
+  select(copy.id);
+  transport.focus();
+  announce(`Saved as ${copy.name}.`);
+});
+
 required<HTMLButtonElement>("[data-export]").addEventListener("click", () => {
   const { fileName, text } = library.exportFnl(selected.id);
   const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
@@ -411,9 +545,15 @@ import("./fennel-loader")
       },
     );
     transport.disabled = false;
-    select(selected.id);
+    void openFromAddress().then((opened) => {
+      if (!opened) select(selected.id);
+    });
+    window.addEventListener("hashchange", () => void openFromAddress());
   })
   .catch((error) => {
     console.error(error);
     announce("The Fennel runtime could not load. Reload the page to try again.");
+    if (readPayload(location.hash) !== null) {
+      showBanner("error", "This link could not be opened because the player did not finish loading. Reload to try again.");
+    }
   });
