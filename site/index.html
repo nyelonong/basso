@@ -2,13 +2,120 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Basso</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Basso | Live-code a beat in your browser</title>
+    <meta
+      name="description"
+      content="Basso plays a beat in your browser. Click steps or write Fennel, and every change lands at the next bar without stopping the music."
+    />
+    <meta name="theme-color" content="#171b1a" />
+    <link rel="canonical" href="https://basso.afrani.id/" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Basso" />
+    <meta property="og:title" content="Basso | Save the pattern. Keep the beat." />
+    <meta
+      property="og:description"
+      content="Click steps or live-code Fennel. Changes land at the next bar while the beat keeps playing."
+    />
+    <meta property="og:url" content="https://basso.afrani.id/" />
+    <meta property="og:image" content="https://basso.afrani.id/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Basso sequencer steps with the line Save the pattern. Keep the beat." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script type="module" src="/src/player/main.ts"></script>
   </head>
   <body>
-    <main>
-      <p>The Basso player is being built. <a href="/about">About Basso</a></p>
-    </main>
+    <a class="skip-link" href="#main">Skip to the player</a>
+
+    <header class="player-head">
+      <a class="brand" href="/" aria-label="Basso player">basso</a>
+
+      <div class="transport">
+        <button class="transport-button" type="button" data-transport aria-pressed="false">
+          <span class="transport-mark" aria-hidden="true"></span>
+          <span data-transport-label>Play</span>
+        </button>
+        <dl class="readout" aria-label="Playback position">
+          <div><dt>BPM</dt><dd data-bpm>---</dd></div>
+          <div><dt>BAR</dt><dd data-bar>--</dd></div>
+          <div><dt>STEP</dt><dd data-step>--</dd></div>
+        </dl>
+      </div>
+
+      <nav class="head-links" aria-label="Site">
+        <a href="/about">About</a>
+        <a href="https://github.com/nyelonong/basso">Source</a>
+      </nav>
+    </header>
+
+    <div class="player-body">
+      <aside class="library" aria-labelledby="library-title">
+        <div class="library-head">
+          <h2 id="library-title">Patterns</h2>
+          <button type="button" class="library-toggle" data-library-toggle aria-expanded="false" aria-controls="library-panel">
+            Patterns
+          </button>
+        </div>
+        <div class="library-panel" id="library-panel">
+          <div class="library-actions">
+            <button type="button" data-new="grid">New grid</button>
+            <button type="button" data-new="code">New code</button>
+            <label class="file-button">
+              Import .fnl
+              <input type="file" accept=".fnl,text/plain" data-import />
+            </label>
+          </div>
+          <p class="library-note" data-storage-note hidden>Saving is off in this browser. Export patterns to keep them.</p>
+          <nav aria-label="Pattern list">
+            <h3>Yours</h3>
+            <ul class="library-list" data-list="user"></ul>
+            <p class="library-empty" data-user-empty>Nothing saved yet. Edit an example to make your own copy.</p>
+            <h3>Examples</h3>
+            <ul class="library-list" data-list="examples"></ul>
+          </nav>
+        </div>
+      </aside>
+
+      <main id="main" class="stage">
+        <p class="hint" data-hint>
+          <span>Press Play, then click steps to change the beat. Every change lands on the next bar.</span>
+          <button type="button" data-hint-dismiss aria-label="Dismiss hint">×</button>
+        </p>
+
+        <div class="entry-head">
+          <div class="entry-title">
+            <label class="visually-hidden" for="entry-name">Pattern name</label>
+            <input id="entry-name" data-entry-name autocomplete="off" spellcheck="false" />
+            <span class="entry-badge" data-entry-badge hidden>Example: edits make your own copy</span>
+          </div>
+          <div class="entry-actions">
+            <button type="button" data-convert hidden>Convert to code</button>
+            <button type="button" data-duplicate>Duplicate</button>
+            <button type="button" data-export>Export .fnl</button>
+            <button type="button" data-delete>Delete</button>
+          </div>
+        </div>
+
+        <section class="panel" data-grid-mode aria-label="Grid editor">
+          <div data-grid-editor></div>
+        </section>
+
+        <section class="panel code-mode" data-code-mode aria-label="Code editor" hidden>
+          <div class="code-bar">
+            <button type="button" class="update-button" data-update>Update</button>
+            <span class="code-hint">or <kbd data-mod-key>Ctrl</kbd> + <kbd>Enter</kbd>. Applies at the next bar.</span>
+          </div>
+          <div class="editor" data-editor></div>
+          <div class="diagnostic" data-diagnostic role="status" aria-live="polite"></div>
+          <h3 class="bar-view-title">Now playing</h3>
+          <div class="bar-view" data-bar-view></div>
+        </section>
+
+        <p class="status visually-hidden" data-status aria-live="polite"></p>
+        <noscript>The player needs JavaScript. The command-line version does not: see the about page.</noscript>
+      </main>
+    </div>
   </body>
 </html>

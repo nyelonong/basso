@@ -107,7 +107,11 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function diagnostic(message: string, bar?: number): Diagnostic {
+// Fennel marks the failing span with terminal color codes, which a web page cannot show.
+const ANSI_ESCAPE = new RegExp(String.fromCharCode(27) + "\\[[0-9;]*m", "g");
+
+function diagnostic(raw: string, bar?: number): Diagnostic {
+  const message = raw.replace(ANSI_ESCAPE, "").trimEnd();
   const line = lineOf(message);
   return {
     message,

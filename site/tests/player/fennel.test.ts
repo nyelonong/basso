@@ -78,7 +78,10 @@ describe("Fennel runtime", () => {
   it("reports the line of a compile error", async () => {
     const result = await runSource("(bpm 120)\n\n(fn pattern [bar]\n  [{:step 0)");
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.line).toBeGreaterThan(0);
+    if (!result.ok) {
+      expect(result.error.line).toBeGreaterThan(0);
+      expect(result.error.message).not.toMatch(/\u001b/);
+    }
   });
 
   it("reports the line and bar of a runtime error", async () => {
