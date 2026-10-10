@@ -86,7 +86,7 @@ function __basso_run(lua_source, bar)
   local rows = {}
   for i, hit in ipairs(hits) do
     if type(hit) ~= "table" then
-      return { ok = false, message = "hit " .. (i - 1) .. " is not a table" }
+      return { ok = false, message = "hit " .. i .. " is not a table" }
     end
     local row = {}
     for k, v in pairs(hit) do

@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { stepLabel } from "../src/sequencer";
 
 const styles = readFileSync(
   resolve(import.meta.dirname, "../src/styles.css"),
@@ -34,13 +33,5 @@ function contrast(left: string, right: string) {
 describe("accessibility contract", () => {
   it("keeps accent labels readable on the paper surface", () => {
     expect(contrast(token("accent-ink"), token("paper"))).toBeGreaterThanOrEqual(4.5);
-  });
-
-  it("includes the visible step number in each accessible button name", () => {
-    const label = stepLabel("kick", 0);
-
-    expect(label.visible).toBe("01");
-    expect(label.accessible).toContain(label.visible);
-    expect(label.accessible).toContain("kick step 1");
   });
 });

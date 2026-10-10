@@ -97,6 +97,6 @@ describe("Fennel runtime", () => {
 
   it("rejects a hit that is not a table", async () => {
     const result = await runSource("(fn pattern [bar] [1])");
-    expect(result).toMatchObject({ ok: false, error: { message: "hit 0 is not a table" } });
+    expect(result).toMatchObject({ ok: false, error: { message: "hit 1 is not a table" } });
   });
 });

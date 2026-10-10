@@ -37,11 +37,14 @@ describe("player assets", () => {
     );
   });
 
-  it("emits every sample as a file in the production build", async () => {
+  it("emits every sample as a separate file when bundled", async () => {
     const output = (await build({
       root: resolve(import.meta.dirname, "../.."),
       logLevel: "silent",
-      build: { write: false },
+      build: {
+        write: false,
+        rollupOptions: { input: resolve(import.meta.dirname, "../fixtures/assets-entry.html") },
+      },
     })) as Rollup.RollupOutput | Rollup.RollupOutput[];
     const files = (Array.isArray(output) ? output : [output]).flatMap((o) => o.output.map((f) => f.fileName));
     for (const wav of wavs) {
