@@ -8,10 +8,20 @@ describe("Basso about page contract", () => {
   it("describes Basso's real playback promise", () => {
     expect(page).toContain("Save the pattern. Keep the beat.");
     expect(page).toContain("next bar");
-    expect(page).toContain("without restarting audio");
+    expect(page).toContain("without stopping the music");
   });
 
-  it("offers a real install path and source repository", () => {
+  it("leads with the browser player", () => {
+    expect(page).toContain('<a class="button button-primary" href="/">Open the player</a>');
+  });
+
+  it("does not describe AI features the browser player does not have", () => {
+    expect(page).not.toMatch(/studio|provider|candidate/i);
+  });
+
+  it("keeps the command-line version as a frozen secondary option", () => {
+    expect(page).toContain('id="cli"');
+    expect(page).toContain("It is frozen");
     expect(page).toContain(
       "go install github.com/nyelonong/basso/cmd/basso@latest",
     );

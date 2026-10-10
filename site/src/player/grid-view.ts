@@ -4,6 +4,8 @@ import "./grid-view.css";
 const VELOCITIES = [1, 0.7, 0.4];
 const STEP_CHOICES = [8, 12, 16, 32];
 const LONG_PRESS_MS = 450;
+// Below this velocity the accent fill is too dark for ink-colored step numbers.
+const SOFT_BELOW = 0.85;
 
 const label = (sample: string) => sample.replace(/\.wav$/, "");
 
@@ -69,6 +71,7 @@ export function mountGridEditor(
     button.dataset.row = String(row);
     button.dataset.step = String(step);
     button.style.setProperty("--velocity", String(cell.velocity));
+    button.dataset.soft = String(cell.velocity < SOFT_BELOW);
 
     let pressTimer: number | undefined;
     let longPressed = false;
@@ -204,6 +207,7 @@ export function mountBarView(el: HTMLElement): { show(bar: Bar | null): void; se
               cell.dataset.step = String(s);
               cell.dataset.on = String(steps.has(s));
               cell.style.setProperty("--velocity", String(steps.get(s) ?? 1));
+              cell.dataset.soft = String((steps.get(s) ?? 1) < SOFT_BELOW);
               return cell;
             }),
           );

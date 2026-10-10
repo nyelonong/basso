@@ -346,6 +346,15 @@ required<HTMLInputElement>("[data-import]").addEventListener("change", async (ev
   select(library.importFnl(file.name, await file.text()).id);
 });
 
+const codeToggle = required<HTMLButtonElement>("[data-code-toggle]");
+codeToggle.addEventListener("click", () => {
+  const open = codeMode.dataset.codeOpen !== "true";
+  codeMode.dataset.codeOpen = String(open);
+  codeToggle.setAttribute("aria-expanded", String(open));
+  codeToggle.textContent = open ? "Hide code" : "Show code";
+  if (open) editor.focus();
+});
+
 libraryToggle.addEventListener("click", () => {
   libraryToggle.setAttribute("aria-expanded", String(libraryToggle.getAttribute("aria-expanded") !== "true"));
 });

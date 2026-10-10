@@ -114,6 +114,11 @@ button.grid-cell {
   color: var(--ink);
 }
 
+.grid-cell[aria-pressed="true"][data-soft="true"],
+.grid-cell[data-on="true"][data-soft="true"] {
+  color: var(--panel-text);
+}
+
 .grid-cell[data-current="true"] {
   outline: 2px solid var(--panel-text);
   outline-offset: 2px;

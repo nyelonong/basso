@@ -1,10 +1,32 @@
 # basso
 
-A live-coding player: a persistent process that plays a Fennel pattern
-continuously and reloads it at the next bar boundary when you save the
-source file, with no audio restart.
+A live-coding beat player. Click steps or write a Fennel pattern, and every
+change lands at the next bar while the beat keeps playing.
 
-[Website](https://basso.afrani.id) · [Source](https://github.com/nyelonong/basso)
+**Play it in your browser: [basso.afrani.id](https://basso.afrani.id)**. No
+install, no account. [About](https://basso.afrani.id/about) ·
+[Source](https://github.com/nyelonong/basso)
+
+## Browser player
+
+The player lives in [`site/`](site/). It runs the same Fennel pattern format
+and 808 samples as the command-line version, entirely in the browser:
+
+- Start from the starter grid or one of the examples in `patterns/`, then
+  press Play.
+- Click steps, or write Fennel and press Update (Cmd/Ctrl+Enter). Changes
+  apply at the next bar; a broken change is reported and the beat carries on.
+- Patterns save in your browser and import/export as `.fnl` files.
+
+Run it locally with `cd site && npm install && npm run dev`. See
+[`site/README.md`](site/README.md) for checks and deployment.
+
+## Command-line version (frozen)
+
+The original Go player still builds and works, but it is frozen: new
+features land in the browser player first. It plays a pattern file from disk
+and reloads it when you save, which suits editing in your own editor. Run it
+from a checkout of this repository, where the samples in `sound/808/` live.
 
 ### Install
 

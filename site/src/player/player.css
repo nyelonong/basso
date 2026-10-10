@@ -205,6 +205,7 @@ a {
 .file-button,
 .entry-actions button,
 .update-button,
+.code-toggle,
 .library-toggle {
   align-items: center;
   background: var(--panel-raised);
@@ -218,7 +219,8 @@ a {
   padding: 0 0.75rem;
 }
 
-.player-body .library-toggle {
+.player-body .library-toggle,
+.code-mode .code-toggle {
   display: none;
 }
 
@@ -508,6 +510,16 @@ noscript {
 
   .editor {
     height: 55dvh;
+  }
+
+  .code-mode .code-toggle {
+    display: inline-flex;
+  }
+
+  .code-mode:not([data-code-open="true"]) .editor,
+  .code-mode:not([data-code-open="true"]) .update-button,
+  .code-mode:not([data-code-open="true"]) .code-hint {
+    display: none;
   }
 }
 

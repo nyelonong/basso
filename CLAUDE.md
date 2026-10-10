@@ -42,6 +42,14 @@ confirmed and removed.
 
 ## Architecture
 
+- `site/` — the browser player served at `basso.afrani.id` (`/` player,
+  `/about`), now the primary interface. TypeScript + Vite; `src/player/`
+  ports the engine (validation, scheduling, synth voices) to Web Audio and runs
+  the vendored Fennel compiler on wasmoon. It bundles `sound/808/`,
+  `patterns/`, and `internal/engine/fennel/compiler.lua` at build time, so
+  pattern-rule changes must land in both the Go engine and `src/player/`.
+  Gates: `cd site && npm run check`. The Go CLI below is frozen (still built
+  and gated, no new features).
 - `cmd/basso/main.go` — CLI entry (`basso play <file.fnl>`, alias `basso <file.fnl>`).
 - `internal/engine/` — the persistent bar-loop `Engine`; `Hit` /
   `PatternProvider` / `AudioSink` types; providers `StaticProvider`

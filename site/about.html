@@ -6,7 +6,7 @@
     <title>About Basso | Save the pattern. Keep the beat.</title>
     <meta
       name="description"
-      content="Basso is a pure-Go live-coding player for Fennel patterns. Save a change and hear it at the next bar without restarting audio."
+      content="Basso is a live-coding beat player that runs in your browser. Click steps or write Fennel, and every change lands at the next bar."
     />
     <meta name="theme-color" content="#dce2df" />
     <link rel="canonical" href="https://basso.afrani.id/about" />
@@ -36,7 +36,7 @@
       </a>
       <nav aria-label="Primary navigation">
         <a href="/">Player</a>
-        <a href="#install">Install</a>
+        <a href="#cli">Command line</a>
         <a href="https://github.com/nyelonong/basso">Source</a>
       </nav>
     </header>
@@ -44,16 +44,16 @@
     <main id="main">
       <section class="hero" id="top" aria-labelledby="hero-title">
         <div class="hero-copy">
-          <p class="hero-label">FENNEL PATTERNS / PURE GO / 808 SAMPLES</p>
+          <p class="hero-label">BROWSER PLAYER / FENNEL PATTERNS / 808 SAMPLES</p>
           <h1 id="hero-title">
             Save the pattern.
             <span>Keep the beat.</span>
           </h1>
           <p class="hero-lede">
-            Basso swaps live-coded grooves at the next bar without restarting audio.
+            Basso plays a beat in your browser and swaps in your changes at the next bar, without stopping the music.
           </p>
           <div class="hero-actions">
-            <a class="button button-primary" href="#install">Install Basso</a>
+            <a class="button button-primary" href="/">Open the player</a>
             <a class="button button-quiet" href="https://github.com/nyelonong/basso">Read the source</a>
           </div>
         </div>
@@ -63,7 +63,7 @@
         <div class="section-title">
           <h2 id="boundary-title">A save waits for the one.</h2>
           <p>
-            Write whenever the idea arrives. Basso keeps the current groove intact until the bar completes.
+            Change the beat whenever the idea arrives. Basso keeps the current groove intact until the bar completes.
           </p>
         </div>
 
@@ -71,22 +71,22 @@
           <li>
             <span class="flow-number">1</span>
             <div>
-              <h3>Start a file</h3>
-              <code>basso play patterns/indo-bounce.fnl</code>
+              <h3>Pick a pattern</h3>
+              <p>Start from an example or a blank grid, then press Play. Nothing to install.</p>
             </div>
           </li>
           <li>
             <span class="flow-number">2</span>
             <div>
               <h3>Edit while it runs</h3>
-              <p>The current pattern keeps playing while the saved Fennel is evaluated and validated.</p>
+              <p>Click steps, or write Fennel and press Update. The current pattern keeps playing while the change is checked.</p>
             </div>
           </li>
           <li>
             <span class="flow-number">3</span>
             <div>
               <h3>Cross the boundary</h3>
-              <p>The next call to <code>pattern(bar)</code> swaps the groove. The audio device never closes.</p>
+              <p>The next call to <code>pattern(bar)</code> swaps the groove. A broken change is reported and the beat carries on.</p>
             </div>
           </li>
         </ol>
@@ -96,7 +96,7 @@
         <div class="pattern-copy">
           <h2 id="pattern-title">The groove is the source file.</h2>
           <p>
-            Sixteen steps, plain data, no hidden timeline. A pattern is a Fennel function you can read, version, and change with any editor.
+            Sixteen steps, plain data, no hidden timeline. A pattern is a Fennel function you can read, export, and keep under version control. Any grid converts to one.
           </p>
           <a class="text-link" href="https://github.com/nyelonong/basso/blob/master/patterns/indo-bounce.fnl">Open the complete pattern</a>
         </div>
@@ -120,26 +120,6 @@
         </figure>
       </section>
 
-      <section class="studio" aria-labelledby="studio-title">
-        <div class="studio-word" aria-hidden="true">studio</div>
-        <div class="studio-copy">
-          <h2 id="studio-title">Stay inside the loop.</h2>
-          <p>
-            Open the cockpit, audition a validated candidate at a bar boundary, then promote it or return to the real file.
-          </p>
-          <code class="studio-command">basso studio patterns/basic-groove.fnl</code>
-          <p class="studio-note">
-            A provider is called only when you submit a prompt. Playback remains local and every candidate is treated as untrusted.
-          </p>
-        </div>
-        <dl class="key-map">
-          <div><dt>SPACE</dt><dd>pause / resume</dd></div>
-          <div><dt>S</dt><dd>describe an edit</dd></div>
-          <div><dt>A</dt><dd>promote candidate</dd></div>
-          <div><dt>R</dt><dd>return to source</dd></div>
-        </dl>
-      </section>
-
       <section class="constraints" aria-labelledby="constraints-title">
         <h2 id="constraints-title">What Basso will not compromise.</h2>
         <div class="constraint-list">
@@ -155,21 +135,25 @@
           </article>
           <article>
             <span>LOCAL</span>
-            <h3>Playback needs no provider.</h3>
-            <p>Network access is explicit and optional.</p>
+            <h3>Everything runs in your browser.</h3>
+            <p>No account, no server, no tracking of your patterns.</p>
           </article>
           <article>
-            <span>BUILD</span>
-            <h3>Pure Go, no cgo.</h3>
-            <p>No native libraries to assemble first.</p>
+            <span>FORMAT</span>
+            <h3>One pattern format.</h3>
+            <p>The same Fennel file plays in the browser and the command line.</p>
           </article>
         </div>
       </section>
 
-      <section class="install" id="install" aria-labelledby="install-title">
+      <section class="install" id="cli" aria-labelledby="install-title">
         <div>
-          <h2 id="install-title">One binary.<br />One pattern file.</h2>
-          <p>Requires a Go toolchain matching the module. Basso brings the runtime and bundled 808 samples.</p>
+          <h2 id="install-title">Prefer your own editor?</h2>
+          <p>
+            The command-line version plays the same Fennel files from disk and reloads them when you save.
+            It is frozen: it still works, but new features land in the browser player first.
+            It needs a Go toolchain and runs from a checkout of the repository, where the samples live.
+          </p>
         </div>
         <div class="install-terminal">
           <div class="install-row">

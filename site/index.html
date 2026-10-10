@@ -104,10 +104,13 @@
 
         <section class="panel code-mode" data-code-mode aria-label="Code editor" hidden>
           <div class="code-bar">
+            <button type="button" class="code-toggle" data-code-toggle aria-expanded="false" aria-controls="code-editor">
+              Show code
+            </button>
             <button type="button" class="update-button" data-update>Update</button>
             <span class="code-hint">or <kbd data-mod-key>Ctrl</kbd> + <kbd>Enter</kbd>. Applies at the next bar.</span>
           </div>
-          <div class="editor" data-editor></div>
+          <div class="editor" id="code-editor" data-editor></div>
           <div class="diagnostic" data-diagnostic role="status" aria-live="polite"></div>
           <h3 class="bar-view-title">Now playing</h3>
           <div class="bar-view" data-bar-view></div>

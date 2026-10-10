@@ -1,7 +1,8 @@
 # Basso site
 
-The public product page for [Basso](https://github.com/nyelonong/basso).
-It is a static Vite site deployed as a Cloudflare Worker with static assets.
+The Basso browser player (`/`) and about page (`/about`) for
+[Basso](https://github.com/nyelonong/basso). It is a static Vite site
+deployed as a Cloudflare Worker with static assets.
 
 ## Local development
 
@@ -12,8 +13,16 @@ npm install
 npm run dev
 ```
 
-The sequencer uses four of Basso's bundled 808 samples. Audio starts only after
-the visitor presses **Play bar**.
+The player code lives in `src/player/`. It reads files from the rest of the
+repository at build time, so there is one copy of each:
+
+- `sound/808/*.wav`: every sample, bundled as separate files.
+- `patterns/*.fnl`: the read-only examples.
+- `internal/engine/fennel/compiler.lua`: the Fennel compiler, run in the
+  browser on wasmoon (Lua 5.4 in WebAssembly).
+
+The pattern rules mirror the Go engine in `internal/engine/`; change both
+together. Audio starts only after the visitor presses **Play**.
 
 ## Verification
 
