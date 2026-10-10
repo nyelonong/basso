@@ -57,7 +57,10 @@ confirmed and removed.
   (gopher-lua + vendored Fennel compiler; owns bar-granular hot reload via
   fsnotify). `AudioSink` is a seam with a real `beepSink` (wrapping
   `github.com/gopxl/beep/v2`) and a `fakeSink` for tests.
-- `sound/808/` — WAV samples, decoded via `beep/v2/wav.Decode` and cached
+- `sound/808/` — WAV samples, built into the binary via `sound.Kit808`
+  (`go:embed`). `cmd/basso/sounds.go` picks the directory: `--sounds`, else
+  `./sound/808` when present, else the kit unpacked once into the user cache
+  (the engine reads samples from disk). Decoded via `beep/v2/wav.Decode` and cached
   per sample name as `*beep.Buffer` by `beepSink`.
 - Timing: `stepDuration = time.Minute / (bpm*4)` → sixteenth-note resolution; 16
   steps = one bar. The engine re-evaluates the Fennel script and calls

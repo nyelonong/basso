@@ -61,7 +61,8 @@ Suggestion flags:
   --provider <openai|ollama|openai-compatible>  AI provider (required).
   --model <name>              Provider model name (required).
   --timeout <duration>        Provider request timeout (default 60s).
-  --sounds <path>             Sound inventory directory (default sound/808).
+  --sounds <path>             Sound inventory directory (default ./sound/808
+                              when present, otherwise the built-in 808 kit).
 
 Provider environment:
   BASSO_AI_PROVIDER  Default AI provider.
@@ -447,6 +448,9 @@ func testCommandDependencies(dir string, stdout, stderr io.Writer) commandDepend
 			return nil, errors.New("unexpected playback")
 		},
 		newSink: newFakeSink,
+		unpackSounds: func() (string, error) {
+			return filepath.Join(dir, "built-in-808"), nil
+		},
 	}
 }
 

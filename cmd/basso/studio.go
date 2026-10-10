@@ -832,7 +832,7 @@ func parseStudioFlags(args []string) (studioFlags, error) {
 	flags.StringVar(&parsed.provider, "provider", "", "AI provider: openai, ollama, or openai-compatible")
 	flags.StringVar(&parsed.model, "model", "", "provider model name")
 	flags.StringVar(&parsed.timeout, "timeout", "", "provider request timeout")
-	flags.StringVar(&parsed.sounds, "sounds", "sound/808", "sound inventory directory")
+	flags.StringVar(&parsed.sounds, "sounds", "", soundsFlagHelp)
 	if err := flags.Parse(args); err != nil {
 		return parsed, fmt.Errorf("studio flags: %w", err)
 	}
@@ -890,7 +890,7 @@ func runStudioSession(ctx context.Context, flags studioFlags, deps commandDepend
 	if err != nil {
 		return fmt.Errorf("resolve source path: %w", err)
 	}
-	soundsPath, err := absoluteFrom(deps.invocationDir, flags.sounds)
+	soundsPath, err := resolveSoundsDir(deps.invocationDir, flags.sounds, deps.unpackSounds)
 	if err != nil {
 		return fmt.Errorf("resolve sounds path: %w", err)
 	}
@@ -915,12 +915,16 @@ func runStudioSession(ctx context.Context, flags studioFlags, deps commandDepend
 	if deps.newStudioProvider != nil {
 		newProvider = deps.newStudioProvider(soundsPath)
 	}
+	newSink := deps.newSink
+	if deps.newStudioSink != nil {
+		newSink = func() engine.AudioSink { return deps.newStudioSink(soundsPath) }
+	}
 	transport, err := newStudioTransport(
 		sessionCtx,
 		path,
 		observers,
 		newProvider,
-		deps.newSink,
+		newSink,
 		func(err error) { send(playbackDoneMsg{err: err}) },
 	)
 	if err != nil {

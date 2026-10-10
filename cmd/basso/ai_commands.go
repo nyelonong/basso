@@ -42,7 +42,8 @@ Suggestion flags:
   --provider <openai|ollama|openai-compatible>  AI provider (required).
   --model <name>              Provider model name (required).
   --timeout <duration>        Provider request timeout (default 60s).
-  --sounds <path>             Sound inventory directory (default sound/808).
+  --sounds <path>             Sound inventory directory (default ./sound/808
+                              when present, otherwise the built-in 808 kit).
 
 Provider environment:
   BASSO_AI_PROVIDER  Default AI provider.
@@ -81,6 +82,8 @@ type commandDependencies struct {
 	newProvider       providerConstructor
 	newStudioProvider func(string) providerConstructor
 	newSink           func() engine.AudioSink
+	newStudioSink     func(soundsPath string) engine.AudioSink
+	unpackSounds      func() (string, error)
 	newStudioProgram  func(model tea.Model, opts ...tea.ProgramOption) programRunner
 }
 
@@ -101,6 +104,8 @@ func defaultCommandDependencies(stdout, stderr io.Writer) (commandDependencies, 
 		newProvider:       newFennelProvider,
 		newStudioProvider: newFennelProviderForSounds,
 		newSink:           newBeepSink,
+		newStudioSink:     engine.NewBeepSink,
+		unpackSounds:      unpackBuiltInSounds,
 	}, nil
 }
 
@@ -167,6 +172,9 @@ func withCommandDefaults(deps commandDependencies) commandDependencies {
 	if deps.newSink == nil {
 		deps.newSink = newBeepSink
 	}
+	if deps.unpackSounds == nil {
+		deps.unpackSounds = unpackBuiltInSounds
+	}
 	if deps.newStudioProgram == nil {
 		deps.newStudioProgram = newTeaProgram
 	}
@@ -183,7 +191,7 @@ func runSuggestCommand(ctx context.Context, args []string, deps commandDependenc
 	flags.StringVar(&provider, "provider", "", "AI provider: openai, ollama, or openai-compatible")
 	flags.StringVar(&model, "model", "", "provider model name")
 	flags.StringVar(&timeout, "timeout", "", "provider request timeout")
-	flags.StringVar(&sounds, "sounds", "sound/808", "sound inventory directory")
+	flags.StringVar(&sounds, "sounds", "", soundsFlagHelp)
 	flags.Usage = func() {
 		fmt.Fprintln(deps.stderr, "usage: basso suggest [flags] <source.fnl> <prompt>")
 		flags.PrintDefaults()
@@ -207,7 +215,7 @@ func runSuggestCommand(ctx context.Context, args []string, deps commandDependenc
 		return err
 	}
 
-	soundsPath, err := absoluteFrom(deps.invocationDir, sounds)
+	soundsPath, err := resolveSoundsDir(deps.invocationDir, sounds, deps.unpackSounds)
 	if err != nil {
 		return fmt.Errorf("resolve sounds path: %w", err)
 	}

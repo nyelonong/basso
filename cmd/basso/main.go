@@ -33,7 +33,11 @@ type providerConstructor func(path string, onDiagnostic engine.DiagnosticReporte
 // newFennelProvider adapts engine.FennelProvider.NewFromFile to
 // providerConstructor's signature.
 func newFennelProvider(path string, onDiagnostic engine.DiagnosticReporter) (closablePatternProvider, error) {
-	return newFennelProviderForSounds("sound/808")(path, onDiagnostic)
+	soundsPath, err := defaultSounds()
+	if err != nil {
+		return nil, err
+	}
+	return newFennelProviderForSounds(soundsPath)(path, onDiagnostic)
 }
 
 func newFennelProviderForSounds(soundsPath string) providerConstructor {
@@ -73,7 +77,11 @@ func stderrDiagnosticReporter(stderr io.Writer) engine.DiagnosticReporter {
 // newBeepSink adapts engine.NewBeepSink to a zero-arg constructor, so run()
 // can also take a stub in place of it.
 func newBeepSink() engine.AudioSink {
-	return engine.NewBeepSink("sound/808/")
+	// Only `basso play` builds this sink (studio uses newStudioSink with its
+	// --sounds path). playSource builds the provider first, which fails on the
+	// same cached error, so a sink is only built after defaultSounds succeeded.
+	soundsPath, _ := defaultSounds()
+	return engine.NewBeepSink(soundsPath)
 }
 
 // playbackObservers receives playback events from run(): one OnBar call per

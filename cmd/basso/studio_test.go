@@ -1036,6 +1036,51 @@ func TestRunStudioCommand_UsesResolvedSoundsForPlayback(t *testing.T) {
 	}
 }
 
+func TestRunStudioCommand_PlaysSamplesFromTheResolvedSoundsDir(t *testing.T) {
+	dir := t.TempDir()
+	deps := testCommandDependencies(dir, io.Discard, io.Discard)
+	deps.newStudioProvider = func(string) providerConstructor {
+		return func(string, engine.DiagnosticReporter) (closablePatternProvider, error) {
+			return &countingProvider{stops: 2, stopErr: errors.New("stop")}, nil
+		}
+	}
+	var sinkSounds string
+	deps.newStudioSink = func(soundsPath string) engine.AudioSink {
+		sinkSounds = soundsPath
+		return newFakeSink()
+	}
+	deps.newStudioProgram = newHeadlessProgram("q")
+
+	if err := runStudioCommand(context.Background(), []string{"--sounds", "kits", "pattern.fnl"}, deps); err != nil {
+		t.Fatalf("runStudioCommand() error = %v", err)
+	}
+	if want := filepath.Join(dir, "kits"); sinkSounds != want {
+		t.Fatalf("studio sink sounds path = %q, want %q", sinkSounds, want)
+	}
+}
+
+func TestRunStudioCommand_UsesInjectedBuiltInKitWithoutSoundsFlag(t *testing.T) {
+	dir := t.TempDir()
+	deps := testCommandDependencies(dir, io.Discard, io.Discard)
+	builtIn := filepath.Join(dir, "unpacked-kit")
+	deps.unpackSounds = func() (string, error) { return builtIn, nil }
+	var gotSounds string
+	deps.newStudioProvider = func(soundsPath string) providerConstructor {
+		gotSounds = soundsPath
+		return func(string, engine.DiagnosticReporter) (closablePatternProvider, error) {
+			return &countingProvider{stops: 2, stopErr: errors.New("stop")}, nil
+		}
+	}
+	deps.newStudioProgram = newHeadlessProgram("q")
+
+	if err := runStudioCommand(context.Background(), []string{"pattern.fnl"}, deps); err != nil {
+		t.Fatalf("runStudioCommand() error = %v", err)
+	}
+	if gotSounds != builtIn {
+		t.Fatalf("studio sounds path = %q, want the injected built-in kit %q", gotSounds, builtIn)
+	}
+}
+
 func TestRunStudioCommand_ParsesFlagsBeforeFile(t *testing.T) {
 	var gotPath string
 	stopErr := errors.New("stop")

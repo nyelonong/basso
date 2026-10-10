@@ -25,8 +25,8 @@ Run it locally with `cd site && npm install && npm run dev`. See
 
 The original Go player still builds and works, but it is frozen: new
 features land in the browser player first. It plays a pattern file from disk
-and reloads it when you save, which suits editing in your own editor. Run it
-from a checkout of this repository, where the samples in `sound/808/` live.
+and reloads it when you save, which suits editing in your own editor. The 808
+samples are built into the binary, so it runs from any directory.
 
 ### Install
 
