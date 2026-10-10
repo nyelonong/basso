@@ -2,12 +2,13 @@ import { EXAMPLE_PATTERNS } from "./assets";
 import { emptyGrid, gridToFennel } from "./grid";
 import type { GridPattern } from "./model";
 
-export type Entry = { id: string; name: string; readOnly: boolean } & (
+export type Entry = { id: string; name: string; readOnly: boolean; shared?: true } & (
   | { kind: "code"; source: string }
   | { kind: "grid"; grid: GridPattern }
 );
 
 export const STARTER_ID = "example:starter-grid";
+export const SHARED_ID = "shared";
 
 const STORAGE_KEY = "basso.library.v1";
 
@@ -60,6 +61,7 @@ const clone = <T>(value: T): T => structuredClone(value);
 export class Library {
   private readonly builtIn = examples();
   private user: Entry[] = [];
+  private shared: Entry | null = null;
   private storageWorks: boolean;
 
   constructor(
@@ -71,7 +73,11 @@ export class Library {
     try {
       const parsed: unknown = JSON.parse(storage.getItem(STORAGE_KEY) ?? "[]");
       if (Array.isArray(parsed)) {
-        this.user = parsed.filter(isEntry).map((e) => ({ ...e, readOnly: false }));
+        this.user = parsed.filter(isEntry).filter((e) => e.id !== SHARED_ID).map((e) => {
+          const entry: Entry = { ...e, readOnly: false };
+          delete entry.shared;
+          return entry;
+        });
       }
     } catch (error) {
       if (!(error instanceof SyntaxError)) this.storageWorks = false;
@@ -83,7 +89,17 @@ export class Library {
   }
 
   list(): Entry[] {
-    return [...this.builtIn, ...this.user].map(clone);
+    return [...(this.shared ? [this.shared] : []), ...this.builtIn, ...this.user].map(clone);
+  }
+
+  // The shared entry lives only in memory: a link never changes what is saved.
+  openShared(pattern: { name: string } & ({ kind: "code"; source: string } | { kind: "grid"; grid: GridPattern })): Entry {
+    this.shared = { ...clone(pattern), id: SHARED_ID, readOnly: true, shared: true };
+    return clone(this.shared);
+  }
+
+  closeShared(): void {
+    this.shared = null;
   }
 
   get(id: string): Entry | undefined {
@@ -102,7 +118,9 @@ export class Library {
 
   duplicate(id: string): Entry {
     const source = this.require(id);
-    return this.add({ ...clone(source), id: this.newId(), name: this.uniqueName(`${source.name} copy`), readOnly: false });
+    const copy: Entry = { ...clone(source), id: this.newId(), name: this.uniqueName(`${source.name} copy`), readOnly: false };
+    delete copy.shared;
+    return this.add(copy);
   }
 
   rename(id: string, name: string): void {
@@ -113,7 +131,9 @@ export class Library {
 
   save(entry: Entry): void {
     const current = this.editable(entry.id);
-    this.user[this.user.indexOf(current)] = { ...clone(entry), name: current.name, readOnly: false };
+    const saved: Entry = { ...clone(entry), name: current.name, readOnly: false };
+    delete saved.shared;
+    this.user[this.user.indexOf(current)] = saved;
     this.persist();
   }
 
@@ -137,7 +157,7 @@ export class Library {
   }
 
   private find(id: string): Entry | undefined {
-    return this.builtIn.find((e) => e.id === id) ?? this.user.find((e) => e.id === id);
+    return this.shared?.id === id ? this.shared : (this.builtIn.find((e) => e.id === id) ?? this.user.find((e) => e.id === id));
   }
 
   private require(id: string): Entry {

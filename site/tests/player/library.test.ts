@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EXAMPLE_PATTERNS } from "../../src/player/assets";
-import { Library, STARTER_ID } from "../../src/player/library";
+import { Library, SHARED_ID, STARTER_ID } from "../../src/player/library";
 
 class MemoryStorage {
   data = new Map<string, string>();
@@ -130,5 +130,140 @@ describe("Library", () => {
     const starter = lib.exportFnl(STARTER_ID);
     expect(starter.fileName).toBe("starter-grid.fnl");
     expect(starter.text).toContain("(bpm 150)");
+  });
+});
+
+describe("Library shared entry", () => {
+  const sharedCode = { name: "from a friend", kind: "code" as const, source: "(fn pattern [bar] [])" };
+  const sharedGrid = {
+    name: "friend grid",
+    kind: "grid" as const,
+    grid: { bpm: 100, steps: 2, rows: [{ sample: "kick2.wav", cells: [{ on: true, velocity: 1 }, { on: false, velocity: 0.4 }] }] },
+  };
+
+  it("opens a read-only shared entry and lists it first", () => {
+    const lib = library();
+    const entry = lib.openShared(sharedCode);
+    expect(entry).toMatchObject({ id: SHARED_ID, name: "from a friend", kind: "code", readOnly: true, shared: true });
+    expect(lib.list()[0]).toMatchObject({ id: SHARED_ID, shared: true });
+    expect(lib.list()[1].id).toBe(STARTER_ID);
+  });
+
+  it("never writes the shared entry to storage", () => {
+    const storage = new MemoryStorage() as unknown as Storage;
+    const lib = new Library(storage, ids);
+    lib.create("code", "mine");
+    const before = storage.getItem("basso.library.v1");
+    lib.openShared(sharedCode);
+    expect(storage.getItem("basso.library.v1")).toBe(before);
+    expect(new Library(storage, ids).list().some((e) => e.shared)).toBe(false);
+  });
+
+  it("replaces an earlier shared entry, and closeShared removes it", () => {
+    const lib = library();
+    lib.openShared(sharedCode);
+    lib.openShared(sharedGrid);
+    expect(lib.list().filter((e) => e.shared)).toHaveLength(1);
+    expect(lib.get(SHARED_ID)).toMatchObject({ name: "friend grid", kind: "grid" });
+    lib.closeShared();
+    expect(lib.get(SHARED_ID)).toBeUndefined();
+    expect(lib.list().some((e) => e.shared)).toBe(false);
+  });
+
+  it("duplicates into a normal saved entry without the shared mark", () => {
+    const storage = new MemoryStorage() as unknown as Storage;
+    const lib = new Library(storage, ids);
+    lib.openShared(sharedGrid);
+    const copy = lib.duplicate(SHARED_ID);
+    expect(copy).toMatchObject({ kind: "grid", readOnly: false, grid: sharedGrid.grid });
+    expect(copy.shared).toBeUndefined();
+    expect(copy.id).not.toBe(SHARED_ID);
+    expect(storage.getItem("basso.library.v1")).not.toContain('"shared"');
+    expect(new Library(storage, ids).get(copy.id)).toMatchObject({ name: copy.name, kind: "grid" });
+  });
+
+  it("gives the copy a unique name when the name is taken", () => {
+    const lib = library();
+    lib.create("code", "from a friend");
+    lib.openShared(sharedCode);
+    expect(lib.duplicate(SHARED_ID).name).not.toBe("from a friend");
+  });
+
+  it("refuses to edit the shared entry in place", () => {
+    const lib = library();
+    const entry = lib.openShared(sharedCode);
+    expect(() => lib.save(entry)).toThrow(/read-only/);
+    expect(() => lib.rename(SHARED_ID, "x")).toThrow(/read-only/);
+    expect(() => lib.delete(SHARED_ID)).toThrow(/read-only/);
+  });
+
+  it("returns copies, so callers cannot change the entry", () => {
+    const lib = library();
+    lib.openShared(sharedGrid);
+    const got = lib.get(SHARED_ID);
+    if (got?.kind !== "grid") throw new Error("expected a grid");
+    got.grid.bpm = 999;
+    const again = lib.get(SHARED_ID);
+    expect(again?.kind === "grid" && again.grid.bpm).toBe(100);
+  });
+
+  it("is not changed by later changes to the object it was opened from", () => {
+    const lib = library();
+    const source = { ...sharedGrid, grid: structuredClone(sharedGrid.grid) };
+    lib.openShared(source);
+    source.grid.bpm = 5;
+    const got = lib.get(SHARED_ID);
+    expect(got?.kind === "grid" && got.grid.bpm).toBe(100);
+  });
+
+  it("exports code as written and grids as Fennel", () => {
+    const lib = library();
+    lib.openShared(sharedCode);
+    expect(lib.exportFnl(SHARED_ID)).toEqual({ fileName: "from a friend.fnl", text: "(fn pattern [bar] [])" });
+    lib.openShared(sharedGrid);
+    expect(lib.exportFnl(SHARED_ID).text).toContain("(bpm 100)");
+  });
+
+  it("ignores a shared mark found in saved data", () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      "basso.library.v1",
+      JSON.stringify([{ id: "u1", name: "old", readOnly: true, shared: true, kind: "code", source: "" }]),
+    );
+    const lib = new Library(storage as unknown as Storage, ids);
+    expect(lib.get("u1")).toMatchObject({ readOnly: false });
+    expect(lib.get("u1")?.shared).toBeUndefined();
+  });
+
+  it("never lets a saved entry take the shared id", () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      "basso.library.v1",
+      JSON.stringify([
+        { id: SHARED_ID, name: "imposter", readOnly: false, kind: "code", source: "" },
+        { id: "u2", name: "fine", readOnly: false, kind: "code", source: "" },
+      ]),
+    );
+    const lib = new Library(storage as unknown as Storage, ids);
+    expect(lib.get(SHARED_ID)).toBeUndefined();
+    expect(lib.get("u2")).toBeDefined();
+  });
+
+  it("drops the shared mark when a shared entry is passed to save", () => {
+    const storage = new MemoryStorage() as unknown as Storage;
+    const lib = new Library(storage, ids);
+    const mine = lib.create("code", "mine");
+    lib.save({ ...mine, shared: true, kind: "code", source: "(fn pattern [bar] [])" });
+    expect(lib.get(mine.id)?.shared).toBeUndefined();
+    expect(storage.getItem("basso.library.v1")).not.toContain('"shared"');
+  });
+
+  it("works with unavailable storage", () => {
+    for (const storage of [null, throwing]) {
+      const lib = library(storage);
+      lib.openShared(sharedCode);
+      expect(lib.duplicate(SHARED_ID).readOnly).toBe(false);
+      expect(lib.persistent).toBe(false);
+    }
   });
 });
