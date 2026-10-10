@@ -113,6 +113,18 @@ function clearShareResult() {
   shareFieldWrap.hidden = true;
 }
 
+function showShareResult(text: string, kind: "ok" | "problem") {
+  shareNotice.dataset.kind = kind;
+  shareNotice.textContent = text;
+}
+
+let shareLabelTimer: number | undefined;
+function flashShareLabel() {
+  window.clearTimeout(shareLabelTimer);
+  shareButton.textContent = "Copied!";
+  shareLabelTimer = window.setTimeout(() => (shareButton.textContent = "Share"), 2000);
+}
+
 function clearLinkFromAddress() {
   // Until the runtime is ready the link has not been opened yet, so keep it.
   if (!session) return;
@@ -246,6 +258,9 @@ function renderList() {
 function renderEntry({ keepEditors = false } = {}) {
   nameInput.value = selected.name;
   nameInput.readOnly = selected.readOnly;
+  const shareable = selected.kind === "grid";
+  shareButton.setAttribute("aria-disabled", String(!shareable));
+  shareButton.title = shareable ? "Copy a link to this beat" : "Only grid patterns can be shared as links";
   badge.hidden = !selected.readOnly;
   badge.textContent = selected.shared
     ? "Shared with you: edits make your own copy"
@@ -407,24 +422,25 @@ async function copyLink(link: string, note: string) {
   try {
     await navigator.clipboard.writeText(link);
     shareFieldWrap.hidden = true;
-    shareNotice.textContent = `Link copied.${note}`;
+    showShareResult(`Link copied. Paste it to send this beat.${note}`, "ok");
+    flashShareLabel();
   } catch {
     shareField.value = link;
     shareFieldWrap.hidden = false;
     shareField.focus();
     shareField.select();
-    shareNotice.textContent = `Copy this link.${note}`;
+    showShareResult(`Your browser blocked copying. Copy this link from the box below.${note}`, "ok");
   }
 }
 
 shareButton.addEventListener("click", async () => {
   clearShareResult();
   if (selected.kind !== "grid") {
-    shareNotice.textContent = CODE_SHARE_TEXT;
+    showShareResult(CODE_SHARE_TEXT, "problem");
     return;
   }
   if (!sharingSupported()) {
-    shareNotice.textContent = describeShareError(new ShareError("unsupported", "no stream support"));
+    showShareResult(describeShareError(new ShareError("unsupported", "no stream support")), "problem");
     return;
   }
   const entryId = selected.id;
@@ -435,10 +451,10 @@ shareButton.addEventListener("click", async () => {
     if (selected.id !== entryId) return;
     await copyLink(buildLink(`${location.origin}/`, payload), note);
   } catch (error) {
-    if (error instanceof ShareError) shareNotice.textContent = describeShareError(error);
+    if (error instanceof ShareError) showShareResult(describeShareError(error), "problem");
     else {
       console.error(error);
-      shareNotice.textContent = "The link could not be made.";
+      showShareResult("The link could not be made.", "problem");
     }
   }
 });

@@ -59,7 +59,9 @@ describe("player accessibility contract", () => {
   it("keeps the shared banner and notice readable", () => {
     expect(rule(playerCss, ".shared-banner")).toContain("var(--panel-text)");
     expect(rule(playerCss, '.shared-banner[data-kind="error"]')).toContain("var(--error)");
-    expect(rule(playerCss, ".share-notice")).toContain("var(--panel-muted)");
+    expect(rule(playerCss, ".share-notice:not(:empty)")).toContain("var(--panel-text)");
+    expect(rule(playerCss, '.share-notice[data-kind="problem"]')).toContain("var(--error)");
+    expect(rule(playerCss, '.entry-actions button[aria-disabled="true"]')).toContain("var(--panel-muted)");
   });
 
   it("switches quiet cells to light text so their step numbers stay readable", () => {

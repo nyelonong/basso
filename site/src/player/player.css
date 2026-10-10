@@ -431,7 +431,23 @@ a {
   color: var(--panel-muted);
   font: 400 0.78rem/1.4 var(--font-mono);
   margin: 0;
-  min-height: 1.1rem;
+}
+
+.share-notice:not(:empty) {
+  background: var(--panel);
+  border-inline-start: 3px solid var(--accent);
+  color: var(--panel-text);
+  font-size: 0.9rem;
+  padding: 0.6rem 0.8rem;
+}
+
+.share-notice[data-kind="problem"] {
+  border-inline-start-color: var(--error);
+}
+
+.entry-actions button[aria-disabled="true"] {
+  border-style: dashed;
+  color: var(--panel-muted);
 }
 
 .share-field-wrap[hidden] {
