@@ -49,7 +49,12 @@ confirmed and removed.
   `patterns/`, and `internal/engine/fennel/compiler.lua` at build time, so
   pattern-rule changes must land in both the Go engine and `src/player/`.
   Gates: `cd site && npm run check`. The Go CLI below is frozen (still built
-  and gated, no new features).
+  and gated, no new features). Share links (`src/player/share.ts`) hold one
+  grid in the URL fragment; format version 1 is frozen so old links keep
+  opening. Code links are refused on purpose: sharing code waits for patterns
+  to run in a Web Worker that can be stopped. An instruction-limit attempt,
+  which could not stop `table.move`, `__gc` finalizers or hostile macros, is
+  on the local branch `parked/instruction-limit`.
 - `cmd/basso/main.go` — CLI entry (`basso play <file.fnl>`, alias `basso <file.fnl>`).
 - `internal/engine/` — the persistent bar-loop `Engine`; `Hit` /
   `PatternProvider` / `AudioSink` types; providers `StaticProvider`

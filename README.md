@@ -17,6 +17,8 @@ and 808 samples as the command-line version, entirely in the browser:
 - Click steps, or write Fennel and press Update (Cmd/Ctrl+Enter). Changes
   apply at the next bar; a broken change is reported and the beat carries on.
 - Patterns save in your browser and import/export as `.fnl` files.
+- Share a grid beat as a link: the pattern travels inside the link, with no
+  account or server. Code patterns cannot be shared as links yet.
 
 Run it locally with `cd site && npm install && npm run dev`. See
 [`site/README.md`](site/README.md) for checks and deployment.

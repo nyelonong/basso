@@ -19,6 +19,12 @@ describe("Basso about page contract", () => {
     expect(page).not.toMatch(/studio|provider|candidate/i);
   });
 
+  it("says a grid beat can be sent as a link, with no account or server", () => {
+    expect(page).toContain("as a link");
+    expect(page).toContain("no account or server");
+    expect(page).not.toMatch(/share (a )?code/i);
+  });
+
   it("keeps the command-line version as a frozen secondary option", () => {
     expect(page).toContain('id="cli"');
     expect(page).toContain("It is frozen");
