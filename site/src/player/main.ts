@@ -1,11 +1,9 @@
 import "@fontsource-variable/archivo";
 import "@fontsource/fragment-mono";
 import "./player.css";
-import wasmUrl from "wasmoon/dist/glue.wasm?url";
-import { FENNEL_COMPILER_SOURCE, SAMPLE_NAMES } from "./assets";
+import { SAMPLE_NAMES } from "./assets";
 import { createWebAudioSink, type WebAudioSink } from "./audio";
-import { createEditor } from "./editor";
-import { createFennelRuntime } from "./fennel";
+import type { createEditor } from "./editor";
 import { gridToFennel } from "./grid";
 import { mountBarView, mountGridEditor } from "./grid-view";
 import { Library, STARTER_ID, type Entry } from "./library";
@@ -93,12 +91,32 @@ const sink: AudioSink = {
 
 const gridEditor = mountGridEditor(required("[data-grid-editor]"), initialGrid(), onGridChange, SAMPLE_NAMES);
 const barView = mountBarView(required("[data-bar-view]"));
-const editor = createEditor(required("[data-editor]"), {
-  onSubmit: submitCode,
-  onChange: () => {
-    if (!loadingEditor) announce("Code changed. Press Update to hear it at the next bar.");
-  },
-});
+type Editor = ReturnType<typeof createEditor>;
+let editor: Editor | null = null;
+let editorLoad: Promise<Editor> | null = null;
+
+// CodeMirror is only downloaded once a code pattern is first opened.
+function ensureEditor(): Promise<Editor> {
+  editorLoad ??= import("./editor").then(({ createEditor }) => {
+    editor = createEditor(required("[data-editor]"), {
+      onSubmit: submitCode,
+      onChange: () => {
+        if (!loadingEditor) announce("Code changed. Press Update to hear it at the next bar.");
+      },
+    });
+    return editor;
+  });
+  return editorLoad;
+}
+
+function showSource(entry: Entry & { kind: "code" }) {
+  void ensureEditor().then((loaded) => {
+    if (selected.id !== entry.id) return;
+    loadingEditor = true;
+    loaded.setSource(entry.source);
+    loadingEditor = false;
+  });
+}
 
 function initialGrid(): GridPattern {
   const starter = library.get(STARTER_ID);
@@ -126,7 +144,7 @@ function onGridChange(grid: GridPattern) {
 }
 
 function submitCode() {
-  if (selected.kind !== "code" || !session) return;
+  if (selected.kind !== "code" || !session || !editor) return;
   const source = editor.getSource();
   const diagnostic = session.updateCode(source);
   if (selected.readOnly && source === selected.source && !diagnostic) {
@@ -185,11 +203,7 @@ function renderEntry({ keepEditors = false } = {}) {
   codeMode.hidden = selected.kind !== "code";
   if (!keepEditors) {
     if (selected.kind === "grid") gridEditor.setGrid(selected.grid);
-    else {
-      loadingEditor = true;
-      editor.setSource(selected.source);
-      loadingEditor = false;
-    }
+    else showSource(selected);
   }
   renderList();
 }
@@ -352,7 +366,7 @@ codeToggle.addEventListener("click", () => {
   codeMode.dataset.codeOpen = String(open);
   codeToggle.setAttribute("aria-expanded", String(open));
   codeToggle.textContent = open ? "Hide code" : "Show code";
-  if (open) editor.focus();
+  if (open) editor?.focus();
 });
 
 libraryToggle.addEventListener("click", () => {
@@ -373,7 +387,8 @@ setReadout(null, null, null);
 transport.disabled = true;
 announce("Loading the Fennel runtime.");
 
-createFennelRuntime(FENNEL_COMPILER_SOURCE, wasmUrl)
+import("./fennel-loader")
+  .then(({ loadFennelRuntime }) => loadFennelRuntime())
   .then((runtime) => {
     session = new Session(
       {

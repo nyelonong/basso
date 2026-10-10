@@ -2,12 +2,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { build, type Rollup } from "vite";
 import { describe, expect, it } from "vitest";
-import {
-  EXAMPLE_PATTERNS,
-  FENNEL_COMPILER_SOURCE,
-  SAMPLE_NAMES,
-  sampleUrl,
-} from "../../src/player/assets";
+import { EXAMPLE_PATTERNS, SAMPLE_NAMES, sampleUrl } from "../../src/player/assets";
+import { FENNEL_COMPILER_SOURCE } from "../../src/player/fennel-loader";
 
 const repo = resolve(import.meta.dirname, "../../..");
 const wavs = readdirSync(resolve(repo, "sound/808")).filter((f) => f.endsWith(".wav")).sort();
