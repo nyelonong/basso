@@ -1,6 +1,7 @@
 import "@fontsource-variable/archivo";
 import "@fontsource/fragment-mono";
 import "./styles.css";
+import { sampleUrl } from "./player/assets";
 import {
   advanceStep,
   createSequencerState,
@@ -16,10 +17,10 @@ const bpm = 150;
 const stepDuration = (60 / bpm / 4) * 1_000;
 const installCommand = "go install github.com/nyelonong/basso/cmd/basso@latest";
 const samplePaths: Record<TrackId, string> = {
-  kick: "/audio/kick2.wav",
-  snare: "/audio/snare.wav",
-  hat: "/audio/cl_hihat.wav",
-  clap: "/audio/handclap.wav",
+  kick: sampleUrl("kick2.wav"),
+  snare: sampleUrl("snare.wav"),
+  hat: sampleUrl("cl_hihat.wav"),
+  clap: sampleUrl("handclap.wav"),
 };
 const trackGain: Record<TrackId, number> = {
   kick: 0.85,
