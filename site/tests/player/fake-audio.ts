@@ -65,6 +65,28 @@ export class FakeFilter extends FakeNode {
   Q = new FakeParam();
 }
 
+export class FakeIIR extends FakeNode {
+  constructor(
+    context: FakeContext,
+    readonly feedforward: number[],
+    readonly feedback: number[],
+  ) {
+    super("iir", context);
+  }
+}
+
+export class FakeBuffer {
+  constructor(
+    readonly numberOfChannels: number,
+    readonly length: number,
+    readonly sampleRate: number,
+    readonly data = new Float32Array(length),
+  ) {}
+  getChannelData() {
+    return this.data;
+  }
+}
+
 export class FakeContext {
   currentTime = 0;
   sampleRate = 44100;
@@ -89,6 +111,12 @@ export class FakeContext {
   }
   createBiquadFilter() {
     return this.add(new FakeFilter("filter", this));
+  }
+  createIIRFilter(feedforward: number[], feedback: number[]) {
+    return this.add(new FakeIIR(this, feedforward, feedback));
+  }
+  createBuffer(channels: number, length: number, sampleRate: number) {
+    return new FakeBuffer(channels, length, sampleRate);
   }
   async decodeAudioData(bytes: ArrayBuffer) {
     this.decoded.push(bytes);

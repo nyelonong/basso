@@ -1,5 +1,6 @@
 import { SAMPLE_NAMES, sampleUrl } from "./assets";
 import type { AudioSink, Instrument } from "./model";
+import { synthVoices } from "./synth";
 
 export type VoiceFactory = {
   playNote(
@@ -21,6 +22,7 @@ export interface WebAudioSink extends AudioSink {
 export async function createWebAudioSink(
   ctx: BaseAudioContext,
   fetchBytes: (url: string) => Promise<ArrayBuffer>,
+  voices: VoiceFactory | null = synthVoices,
 ): Promise<WebAudioSink> {
   const buffers = new Map<string, AudioBuffer>();
   await Promise.all(
@@ -36,7 +38,7 @@ export async function createWebAudioSink(
   };
 
   const sink: WebAudioSink = {
-    voices: null,
+    voices,
     playSample(name, time, velocity, pan) {
       const buffer = buffers.get(name);
       if (!buffer) return;

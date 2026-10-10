@@ -32,6 +32,10 @@ export class Scheduler {
     private readonly events: SchedulerEvents,
   ) {}
 
+  get upcomingBar(): number {
+    return this.cancel ? this.nextBar : 0;
+  }
+
   start(): void {
     if (this.cancel) return;
     this.nextBar = 0;
