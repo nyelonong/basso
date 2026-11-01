@@ -34,10 +34,10 @@ describe("Basso about page contract", () => {
     expect(page).toContain("https://github.com/nyelonong/basso");
   });
 
-  it("publishes canonical and social metadata for basso.afrani.id", () => {
-    expect(page).toContain('<link rel="canonical" href="https://basso.afrani.id/about"');
-    expect(page).toContain('<meta property="og:url" content="https://basso.afrani.id/about"');
-    expect(page).toContain('<meta property="og:image" content="https://basso.afrani.id/og.png"');
+  it("publishes canonical and social metadata for basso.discoverd.io", () => {
+    expect(page).toContain('<link rel="canonical" href="https://basso.discoverd.io/about"');
+    expect(page).toContain('<meta property="og:url" content="https://basso.discoverd.io/about"');
+    expect(page).toContain('<meta property="og:image" content="https://basso.discoverd.io/og.png"');
   });
 
   it("keeps the primary page landmarks accessible and links to the player", () => {

@@ -24,6 +24,6 @@ describe("Cloudflare deployment contract", () => {
     expect(readme).toContain("Build command: `npm run build`");
     expect(readme).toContain("Deploy command: `npx wrangler deploy`");
     expect(readme).toContain("Worker name: `basso`");
-    expect(readme).toContain("Custom domain: `basso.afrani.id`");
+    expect(readme).toContain("Custom domain: `basso.discoverd.io`");
   });
 });

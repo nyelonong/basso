@@ -41,7 +41,9 @@ npm run check
 
 ## Deployment
 
-Cloudflare Workers Builds uses these fields:
+The Worker lives in the Cloudflare account that holds `discoverd.io`; a custom
+domain must belong to the same account as its Worker. Cloudflare Workers Builds
+uses these fields:
 
 - Git repository: `nyelonong/basso`
 - Production branch: `master`
@@ -49,10 +51,10 @@ Cloudflare Workers Builds uses these fields:
 - Build command: `npm run build`
 - Deploy command: `npx wrangler deploy`
 - Worker name: `basso`
-- Custom domain: `basso.afrani.id`
+- Custom domain: `basso.discoverd.io`
 
 The checked-in `wrangler.jsonc` deploys `dist/` as an assets-only Worker. The
 custom domain is a Cloudflare dashboard binding rather than a checked-in route:
 open the `basso` Worker, choose **Settings > Domains & Routes > Add > Custom
-Domain**, and enter `basso.afrani.id`. Cloudflare creates the DNS record and TLS
+Domain**, and enter `basso.discoverd.io`. Cloudflare creates the DNS record and TLS
 certificate when the hostname belongs to the same active Cloudflare account.
