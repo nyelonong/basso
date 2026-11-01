@@ -194,11 +194,11 @@ describe("making links", () => {
   });
 
   it("builds a link after the hash", () => {
-    expect(buildLink("https://basso.afrani.id/", "1.abc")).toBe("https://basso.afrani.id/#1.abc");
+    expect(buildLink("https://basso.discoverd.io/", "1.abc")).toBe("https://basso.discoverd.io/#1.abc");
   });
 
   it("allows exactly 8,000 characters and refuses one more", () => {
-    const base = "https://basso.afrani.id/";
+    const base = "https://basso.discoverd.io/";
     const fits = "1." + "a".repeat(MAX_LINK_LENGTH - base.length - 1 - 2);
     expect(buildLink(base, fits)).toHaveLength(MAX_LINK_LENGTH);
     expect(() => buildLink(base, fits + "a")).toThrowError(ShareError);

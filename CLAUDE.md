@@ -42,7 +42,7 @@ confirmed and removed.
 
 ## Architecture
 
-- `site/` — the browser player served at `basso.afrani.id` (`/` player,
+- `site/` — the browser player served at `basso.discoverd.io` (`/` player,
   `/about`), now the primary interface. TypeScript + Vite; `src/player/`
   ports the engine (validation, scheduling, synth voices) to Web Audio and runs
   the vendored Fennel compiler on wasmoon. It bundles `sound/808/`,

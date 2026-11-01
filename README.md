@@ -3,8 +3,8 @@
 A live-coding beat player. Click steps or write a Fennel pattern, and every
 change lands at the next bar while the beat keeps playing.
 
-**Play it in your browser: [basso.afrani.id](https://basso.afrani.id)**. No
-install, no account. [About](https://basso.afrani.id/about) ·
+**Play it in your browser: [basso.discoverd.io](https://basso.discoverd.io)**. No
+install, no account. [About](https://basso.discoverd.io/about) ·
 [Source](https://github.com/nyelonong/basso)
 
 ## Browser player
