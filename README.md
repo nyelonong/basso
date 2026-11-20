@@ -17,6 +17,8 @@ and samples as the command-line version, entirely in the browser:
 - Click steps, or write Fennel and press Update (Cmd/Ctrl+Enter). Changes
   apply at the next bar; a broken change is reported and the beat carries on.
 - Patterns save in your browser and import/export as `.fnl` files.
+- Export WAV renders 8 bars of the saved pattern to a 16-bit stereo file that
+  ends exactly on the bar line, so it loops cleanly.
 - Share a grid beat as a link: the pattern travels inside the link, with no
   account or server. Code patterns cannot be shared as links yet.
 
