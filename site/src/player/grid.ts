@@ -16,6 +16,7 @@ export function gridToBar(grid: GridPattern): Bar {
   return {
     bpm: grid.bpm,
     steps: grid.steps,
+    swing: 50,
     hits: grid.rows.flatMap((row) =>
       row.cells.flatMap((cell, step) =>
         cell.on ? [{ kind: "sample" as const, sample: row.sample, step, velocity: cell.velocity, pan: 0 }] : [],

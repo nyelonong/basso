@@ -61,7 +61,10 @@ function harness() {
 }
 
 const sample = (step: number, name = "kick2.wav"): Hit => ({ kind: "sample", sample: name, step, velocity: 0.8, pan: -0.5 });
-const provider = (hits: Hit[], bpm = 120, steps = 16): BarProvider => () => ({ ok: true, bar: { hits, bpm, steps } });
+const provider = (hits: Hit[], bpm = 120, steps = 16, swing = 50): BarProvider => () => ({
+  ok: true,
+  bar: { hits, bpm, steps, swing },
+});
 const sampleTimes = (calls: Call[], name = "kick2.wav") =>
   calls.flatMap((c) => (c.type === "sample" && c.name === name ? [c.time] : []));
 
@@ -172,4 +175,21 @@ describe("Scheduler", () => {
     expect(h.bars).toHaveLength(2);
     expect(h.bars[1].start).toBeGreaterThanOrEqual(30);
   });
+
+  it("plays odd steps late by the bar's swing", () => {
+    const h = harness();
+    h.slot.apply(provider([sample(0), sample(1), sample(2), sample(3)], 120, 16, 75));
+    h.scheduler.start();
+    expect(sampleTimes(h.calls)).toEqual([10.1, 10.1 + 1.5 * 0.125, 10.1 + 2 * 0.125, 10.1 + 3.5 * 0.125]);
+  });
+
+  it("ends a swung note on the grid", () => {
+    const h = harness();
+    const pad: Hit = { kind: "note", note: "C3", instrument: "pad", step: 15, length: 1, velocity: 1, pan: 0 };
+    h.slot.apply(provider([pad], 120, 16, 75));
+    h.scheduler.start();
+    const call = h.calls.find((c) => c.type === "note");
+    expect(call).toMatchObject({ time: 10.1 + 15.5 * 0.125, duration: 0.5 * 0.125 });
+  });
 });
+

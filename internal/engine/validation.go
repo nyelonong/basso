@@ -13,6 +13,17 @@ type Bar struct {
 	Hits        []Hit
 	BPM         int
 	StepsPerBar int
+	// Swing is the MPC-style percentage: 50 plays straight, 75 is the hardest shuffle.
+	Swing float64
+}
+
+// SwingDelay returns how many steps late a hit at step plays under swing:
+// odd steps move by (swing/50 - 1), so 66.7 gives a triplet feel.
+func SwingDelay(swing float64, step int) float64 {
+	if step%2 == 0 {
+		return 0
+	}
+	return swing/50 - 1
 }
 
 // SoundInventory contains the regular-file sound basenames available to a bar.

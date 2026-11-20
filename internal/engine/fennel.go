@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -20,6 +21,9 @@ import (
 //
 //go:embed fennel/compiler.lua
 var fennelCompilerSource string
+
+//go:embed fennel/prelude.lua
+var fennelPreludeSource string
 
 // fennelReloadDebounce is how long the fsnotify watcher waits after the
 // last write event on the watched file before reading it and staging its
@@ -395,8 +399,18 @@ func (e *Evaluator) Evaluate(ctx context.Context, source string, bar int) (Bar, 
 		)
 	}
 
+	if err := L.DoString(fennelPreludeSource); err != nil {
+		return Bar{}, classifyEvaluationError(
+			evaluationCtx,
+			EvaluationPhaseCompile,
+			bar,
+			fmt.Errorf("load prelude: %w", err),
+		)
+	}
+
 	bpm := 120
 	stepsPerBar := 16
+	swing := 50.0
 
 	L.SetGlobal("bpm", L.NewFunction(func(l *lua.LState) int {
 		bpm = int(l.CheckNumber(1))
@@ -404,6 +418,10 @@ func (e *Evaluator) Evaluate(ctx context.Context, source string, bar int) (Bar, 
 	}))
 	L.SetGlobal("steps", L.NewFunction(func(l *lua.LState) int {
 		stepsPerBar = int(l.CheckNumber(1))
+		return 0
+	}))
+	L.SetGlobal("swing", L.NewFunction(func(l *lua.LState) int {
+		swing = float64(l.CheckNumber(1))
 		return 0
 	}))
 
@@ -577,9 +595,20 @@ func (e *Evaluator) Evaluate(ctx context.Context, source string, bar int) (Bar, 
 		Hits:        hits,
 		BPM:         bpm,
 		StepsPerBar: stepsPerBar,
+		Swing:       swing,
 	}
 	if err := ValidateBar(mappedBar, e.inventory); err != nil {
 		return Bar{}, newEvaluationError(EvaluationPhaseValidate, bar, err)
+	}
+	if math.IsNaN(swing) || swing < 50 || swing > 75 {
+		return Bar{}, newEvaluationError(
+			EvaluationPhaseValidate,
+			bar,
+			fmt.Errorf("engine: swing %v must be in [50,75]", swing),
+		)
+	}
+	for i := range mappedBar.Hits {
+		mappedBar.Hits[i].Delay = SwingDelay(swing, mappedBar.Hits[i].Step)
 	}
 
 	return mappedBar, nil

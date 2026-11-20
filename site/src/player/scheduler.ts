@@ -1,4 +1,4 @@
-import { stepSeconds, type AudioSink, type Bar, type Diagnostic } from "./model";
+import { stepSeconds, swingDelay, type AudioSink, type Bar, type Diagnostic } from "./model";
 import type { PatternSlot } from "./slot";
 
 export interface AudioClock {
@@ -66,9 +66,11 @@ export class Scheduler {
     if (bar) {
       const step = stepSeconds(bar.bpm);
       for (const hit of bar.hits) {
-        const time = start + hit.step * step;
+        const delay = swingDelay(bar.swing, hit.step);
+        const time = start + (hit.step + delay) * step;
         if (hit.kind === "sample") this.sink.playSample(hit.sample, time, hit.velocity, hit.pan);
-        else this.sink.playNote(hit.note, hit.instrument, time, hit.length * step, hit.velocity, hit.pan);
+        // A swung note still ends on the grid, so it never crosses into the next bar or voice window.
+        else this.sink.playNote(hit.note, hit.instrument, time, (hit.length - delay) * step, hit.velocity, hit.pan);
       }
     }
     this.nextBarStart = start + (bar ? bar.steps * stepSeconds(bar.bpm) : IDLE_BAR_SECONDS);

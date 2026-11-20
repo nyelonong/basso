@@ -23,7 +23,7 @@ describe("fennelProvider", () => {
     const result = await evaluate(hitsOf('{:step 2 :sample "kick2.wav"}'));
     expect(result).toEqual({
       ok: true,
-      bar: { bpm: 120, steps: 16, hits: [{ kind: "sample", sample: "kick2.wav", step: 2, velocity: 1, pan: 0.5 }] },
+      bar: { bpm: 120, steps: 16, swing: 50, hits: [{ kind: "sample", sample: "kick2.wav", step: 2, velocity: 1, pan: 0.5 }] },
     });
   });
 
@@ -82,4 +82,87 @@ describe("fennelProvider", () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.bar.hits.length).toBeGreaterThan(10);
   });
+
+  it("reads swing from the pattern", async () => {
+    const result = await evaluate("(swing 66)\n" + hitsOf(""));
+    expect(result).toMatchObject({ ok: true, bar: { swing: 66 } });
+  });
+
+  it("turns seq step strings into sample hits", async () => {
+    const result = await evaluate('(fn pattern [bar] (seq "kick2.wav" "x..o | -x" {:pan 0 :velocity 0.8}))');
+    expect(result).toMatchObject({
+      ok: true,
+      bar: {
+        hits: [
+          { kind: "sample", sample: "kick2.wav", step: 0, velocity: 0.8, pan: 0 },
+          { kind: "sample", sample: "kick2.wav", step: 3, velocity: 0.4, pan: 0 },
+          { kind: "sample", sample: "kick2.wav", step: 5, velocity: 0.8, pan: 0 },
+        ],
+      },
+    });
+  });
+
+  it("turns melody tokens into held notes", async () => {
+    const result = await evaluate('(fn pattern [bar] (melody "pluck" "A1 _ _ . C2 | D#2 _"))');
+    expect(result).toMatchObject({
+      ok: true,
+      bar: {
+        hits: [
+          { kind: "note", note: "A1", instrument: "pluck", step: 0, length: 3 },
+          { kind: "note", note: "C2", instrument: "pluck", step: 4, length: 1 },
+          { kind: "note", note: "D#2", instrument: "pluck", step: 5, length: 2 },
+        ],
+      },
+    });
+  });
+
+  it("stacks lists and single hits", async () => {
+    const result = await evaluate(
+      '(fn pattern [bar] (stack (seq "kick2.wav" "x.x") {:step 1 :sample "snare.wav"} []))',
+    );
+    expect(result.ok && result.bar.hits.map((hit) => hit.step)).toEqual([0, 2, 1]);
+  });
+
+  it("reports a bad step character", async () => {
+    const result = await evaluate('(fn pattern [bar]\n  (seq "kick2.wav" "x?x"))');
+    expect(result).toMatchObject({ ok: false, error: { message: "pattern: seq: unknown step ? (use x, o, . or -)" } });
+  });
+
+  it("rejects swing outside 50 to 75", async () => {
+    const result = await evaluate("(swing 80)\n" + hitsOf(""));
+    expect(result).toMatchObject({ ok: false, error: { message: "swing 80 must be in [50,75]" } });
+  });
+
+  it("plays the shuffle-groove example, fill bar included", async () => {
+    const source = readFileSync(resolve(repo, "patterns/shuffle-groove.fnl"), "utf8");
+    for (const bar of [0, 3]) {
+      const result = await evaluate(source, bar);
+      expect(result).toMatchObject({ ok: true, bar: { swing: 62 } });
+    }
+  });
+
+  it("refuses options that would move or rename hits", async () => {
+    for (const body of ['(seq "kick2.wav" "x.x." {:step 3})', '(melody "bass" "C2 _" {:length 4})']) {
+      const result = await evaluate(`(fn pattern [bar] ${body})`);
+      expect(result).toMatchObject({ ok: false, error: { message: expect.stringContaining("options cannot set") } });
+    }
+  });
+
+  it("skips nil in stack and reports a bare hit without a step", async () => {
+    const skipped = await evaluate('(fn pattern [bar] (stack (seq "kick2.wav" "x") (when false (seq "snare.wav" "x"))))');
+    expect(skipped.ok && skipped.bar.hits.length).toBe(1);
+    const missing = await evaluate('(fn pattern [bar] (stack {:sample "kick2.wav"}))');
+    expect(missing).toMatchObject({ ok: false, error: { message: "hit 1 :step is required" } });
+  });
+
+  it("accepts swing as a numeric string like the Go engine", async () => {
+    expect(await evaluate('(swing "62")\n' + hitsOf(""))).toMatchObject({ ok: true, bar: { swing: 62 } });
+  });
+
+  it("keeps the helpers when an earlier pattern rewrites the real globals", async () => {
+    await evaluate('((load "seq = nil melody = nil stack = nil"))\n' + hitsOf(""));
+    const result = await evaluate('(fn pattern [bar] (stack (seq "kick2.wav" "x") (melody "bass" "C2")))');
+    expect(result.ok && result.bar.hits.length).toBe(2);
+  });
 });
+

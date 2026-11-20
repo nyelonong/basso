@@ -5,6 +5,7 @@ import { PatternSlot } from "../../src/player/slot";
 const barOf = (step: number): Bar => ({
   bpm: 120,
   steps: 16,
+  swing: 50,
   hits: [{ kind: "sample", sample: "kick2.wav", step, velocity: 1, pan: 0 }],
 });
 const fixed = (step: number): BarProvider => () => ({ ok: true, bar: barOf(step) });

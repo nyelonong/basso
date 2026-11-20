@@ -33,6 +33,7 @@ describe("grid conversion", () => {
     expect(gridToBar(grid())).toEqual({
       bpm: 132,
       steps: 16,
+      swing: 50,
       hits: [
         { kind: "sample", sample: "kick2.wav", step: 0, velocity: 1, pan: 0 },
         { kind: "sample", sample: "kick2.wav", step: 8, velocity: 0.7, pan: 0 },
@@ -74,7 +75,7 @@ describe("grid conversion", () => {
     const runtime = await createFennelRuntime(compilerSource);
     const compiled = runtime.compile(gridToFennel(emptyGrid(samples)));
     if (!compiled.ok) throw new Error(compiled.error.message);
-    expect(runtime.run(compiled.pattern, 0)).toEqual({ ok: true, bpm: 120, steps: 16, rawHits: [] });
+    expect(runtime.run(compiled.pattern, 0)).toEqual({ ok: true, bpm: 120, steps: 16, swing: 50, rawHits: [] });
   });
 
   it("writes readable Fennel", () => {

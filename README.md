@@ -20,6 +20,38 @@ and 808 samples as the command-line version, entirely in the browser:
 - Share a grid beat as a link: the pattern travels inside the link, with no
   account or server. Code patterns cannot be shared as links yet.
 
+### Short notation and swing
+
+A pattern can spell a bar as a string instead of one table per hit. Both
+players understand it:
+
+```fennel
+(swing 62)
+
+(fn pattern [bar]
+  (stack
+    (seq "kick2.wav" "x... ..x. x... ....")
+    (seq "cl_hihat.wav" "x.xo x.xo x.xo x.x." {:velocity 0.6 :pan 0.3})
+    (melody "bass" "C2 _ . . . . Eb2 _ C2 _ . . . . G1 _")))
+```
+
+- `seq` plays a sample: `x` hits, `o` is a soft ghost hit at half velocity,
+  `.` or `-` rests. Spaces and `|` are ignored, so group steps however reads
+  best. An options table such as `{:pan 0 :velocity 0.6}` is copied onto
+  every hit; its `:velocity` scales them. Options cannot set `:step`,
+  `:sample` or `:note`.
+- `melody` plays an instrument: each note name is one step, `_` holds the note
+  one step longer, `.` rests. Options cannot set `:length`; use `_`.
+- `stack` joins lists of hits and single hits into one list, so the short form
+  mixes freely with `{:step ...}` tables. It skips `nil`, so
+  `(stack beat (when fill? fill))` works.
+- `(swing n)` delays every odd step. `50` (the default) is straight, `66` is
+  a triplet shuffle, and `75` is the hardest; values outside `[50,75]` are
+  refused. A swung note still ends on the grid. Grid patterns stay straight.
+
+See `patterns/shuffle-groove.fnl` for a full example with a fill every fourth
+bar.
+
 Run it locally with `cd site && npm install && npm run dev`. See
 [`site/README.md`](site/README.md) for checks and deployment.
 
