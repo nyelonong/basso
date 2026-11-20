@@ -8,7 +8,7 @@
       name="description"
       content="Basso plays a beat in your browser. Click steps or write Fennel, and every change lands at the next bar without stopping the music."
     />
-    <meta name="theme-color" content="#171b1a" />
+    <meta name="theme-color" content="#0d0e0e" />
     <link rel="canonical" href="https://basso.discoverd.io/" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <meta property="og:type" content="website" />
@@ -28,6 +28,7 @@
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to the player</a>
+    <canvas class="dust" data-dust aria-hidden="true"></canvas>
 
     <header class="player-head">
       <a class="brand" href="/" aria-label="Basso player">basso</a>
@@ -82,7 +83,7 @@
 
       <main id="main" class="stage">
         <p class="hint" data-hint>
-          <span>Press Play, then click steps to change the beat. Every change lands on the next bar.</span>
+          <span><strong>Save the pattern. Keep the beat.</strong> Press Play, then click steps to change the beat. Every change lands on the next bar.</span>
           <button type="button" data-hint-dismiss aria-label="Dismiss hint">×</button>
         </p>
 

@@ -8,7 +8,7 @@
       name="description"
       content="Basso is a live-coding beat player that runs in your browser. Click steps or write Fennel, and every change lands at the next bar."
     />
-    <meta name="theme-color" content="#dce2df" />
+    <meta name="theme-color" content="#0d0e0e" />
     <link rel="canonical" href="https://basso.discoverd.io/about" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <meta property="og:type" content="website" />
@@ -28,6 +28,7 @@
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
+    <canvas class="dust" data-dust aria-hidden="true"></canvas>
 
     <header class="site-head">
       <a class="brand" href="/" aria-label="Basso player">
@@ -57,6 +58,12 @@
             <a class="button button-quiet" href="https://github.com/nyelonong/basso">Read the source</a>
           </div>
         </div>
+        <div
+          class="hero-mark"
+          data-mark
+          role="img"
+          aria-label="The starter beat as 16 steps in 4 rows of glowing dust, with a playhead of light sweeping across it"
+        ></div>
       </section>
 
       <section class="bar-story" aria-labelledby="boundary-title">

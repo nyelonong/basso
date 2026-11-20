@@ -1,6 +1,7 @@
 import "@fontsource-variable/archivo";
 import "@fontsource/fragment-mono";
 import "./styles.css";
+import { startStepMark } from "./dust/mark";
 
 const installCommand = "go install github.com/nyelonong/basso/cmd/basso@latest";
 
@@ -45,3 +46,10 @@ copyButton.addEventListener("click", async () => {
     console.error(error);
   }
 });
+
+try {
+  startStepMark(required<HTMLCanvasElement>("[data-dust]"), required<HTMLElement>("[data-mark]"));
+} catch (error) {
+  // The mark is decoration; the page reads the same without it.
+  console.warn("dust:", error);
+}

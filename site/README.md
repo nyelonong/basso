@@ -24,6 +24,11 @@ repository at build time, so there is one copy of each:
 The pattern rules mirror the Go engine in `internal/engine/`; change both
 together. Audio starts only after the visitor presses **Play**.
 
+`src/dust/` draws the glowing dust (raw WebGL, no library): the step-grid mark
+on `/about` and the field on `/` that pulses on each hit the scheduler plays.
+It is decoration only: without WebGL nothing draws, and with reduced motion it
+is one still frame. `public/og.png` is a capture of the `/about` hero.
+
 ## Verification
 
 ```sh
