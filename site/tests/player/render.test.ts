@@ -25,6 +25,7 @@ function harness() {
     },
     fetchBytes: async () => new ArrayBuffer(0),
     createSink: async () => sink,
+    measureDelay: async () => 400,
   };
   return { calls, created, deps };
 }
@@ -44,8 +45,10 @@ describe("renderPattern", () => {
     const result = await renderPattern(provider, 2, h.deps);
     // 16 steps at 0.125 s, then 4 steps at 0.25 s.
     expect(result).toMatchObject({ ok: true, seconds: 3 });
-    expect(h.created).toEqual([{ channels: 2, frames: 3 * 44100, sampleRate: 44100 }]);
-    expect(h.calls.map((c) => c.time)).toEqual([0, 2 + 1.5 * 0.25]);
+    // A 0.1 s lead-in (4410 frames) and the 400-frame bus delay, both trimmed from the front of the file.
+    expect(h.created).toEqual([{ channels: 2, frames: 4410 + 400 + 3 * 44100, sampleRate: 44100 }]);
+    if (result.ok) expect(result.wav.length).toBe(44 + 3 * 44100 * 4);
+    expect(h.calls.map((c) => c.time)).toEqual([0.1, 0.1 + 2 + 1.5 * 0.25]);
   });
 
   it("refuses renders longer than five minutes", async () => {
@@ -84,6 +87,12 @@ describe("encodeWav", () => {
     expect(view.getUint32(24, true)).toBe(44100);
     expect(view.getUint16(34, true)).toBe(16);
     expect(view.getUint32(40, true)).toBe(8);
+  });
+
+  it("drops the frames before startFrame", () => {
+    const view = new DataView(encodeWav(audio([0.1, 0.5], [0.2, -0.5]), 1).buffer);
+    expect(view.getUint32(40, true)).toBe(4);
+    expect([view.getInt16(44, true), view.getInt16(46, true)]).toEqual([16384, -16383]);
   });
 
   it("interleaves channels and clips samples past full scale", () => {

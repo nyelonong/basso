@@ -1,4 +1,4 @@
-import { createWebAudioSink } from "./audio";
+import { createMasterBus, createWebAudioSink } from "./audio";
 import { scheduleBar } from "./scheduler";
 import { stepSeconds, type AudioSink, type Bar, type BarProvider, type Diagnostic } from "./model";
 
@@ -6,6 +6,9 @@ export const RENDER_SAMPLE_RATE = 44100;
 // Five minutes of stereo float audio is about 100 MB; longer renders risk the tab running out of memory.
 export const MAX_RENDER_SECONDS = 300;
 const CHANNELS = 2;
+// The limiter squashes a hit that arrives before it has settled, so the bars
+// start after this much silence, which is trimmed from the file.
+const LEAD_IN_SECONDS = 0.1;
 
 export type RenderedAudio = {
   readonly numberOfChannels: number;
@@ -20,7 +23,26 @@ export type RenderDeps = {
   createContext(channels: number, frames: number, sampleRate: number): RenderContext;
   fetchBytes(url: string): Promise<ArrayBuffer>;
   createSink?(ctx: RenderContext, fetchBytes: (url: string) => Promise<ArrayBuffer>): Promise<AudioSink>;
+  measureDelay?(): Promise<number>;
 };
+
+// Frames between a sound entering the master bus and leaving it. The limiter's
+// lookahead and the clipper's oversampling differ between browsers, so it is
+// measured with a single click rather than assumed.
+export async function measureMasterBusDelay(createContext: RenderDeps["createContext"]): Promise<number> {
+  const lead = Math.round(LEAD_IN_SECONDS * RENDER_SAMPLE_RATE);
+  const ctx = createContext(1, lead * 2, RENDER_SAMPLE_RATE);
+  const click = ctx.createBuffer(1, 1, RENDER_SAMPLE_RATE);
+  click.getChannelData(0)[0] = 0.5;
+  const source = ctx.createBufferSource();
+  source.buffer = click;
+  source.connect(createMasterBus(ctx));
+  source.start(LEAD_IN_SECONDS);
+  const out = (await ctx.startRendering()).getChannelData(0);
+  let peak = lead;
+  for (let i = lead; i < out.length; i++) if (Math.abs(out[i]) > Math.abs(out[peak])) peak = i;
+  return peak - lead;
+}
 
 export type RenderResult = { ok: true; wav: Uint8Array<ArrayBuffer>; seconds: number } | { ok: false; error: Diagnostic };
 
@@ -42,17 +64,23 @@ export async function renderPattern(provider: BarProvider, barCount: number, dep
       error: { message: `${barCount} bars last ${Math.round(seconds)} seconds; renders are limited to ${MAX_RENDER_SECONDS}` },
     };
   }
-  const ctx = deps.createContext(CHANNELS, Math.max(1, Math.round(seconds * RENDER_SAMPLE_RATE)), RENDER_SAMPLE_RATE);
+  // Trimming the lead-in and the bus delay from the front puts every hit
+  // exactly on its grid line when the file is placed in a DAW.
+  const delay = await (deps.measureDelay ?? (() => measureMasterBusDelay(deps.createContext)))();
+  const skip = Math.round(LEAD_IN_SECONDS * RENDER_SAMPLE_RATE) + delay;
+  const frames = Math.max(1, Math.round(seconds * RENDER_SAMPLE_RATE));
+  const ctx = deps.createContext(CHANNELS, skip + frames, RENDER_SAMPLE_RATE);
   const sink = await (deps.createSink ?? createWebAudioSink)(ctx, deps.fetchBytes);
-  let start = 0;
+  let start = LEAD_IN_SECONDS;
   for (const bar of bars) start += scheduleBar(sink, bar, start);
-  return { ok: true, wav: encodeWav(await ctx.startRendering()), seconds };
+  return { ok: true, wav: encodeWav(await ctx.startRendering(), skip), seconds };
 }
 
-// 16-bit PCM WAV; samples outside [-1, 1] are clipped as a sound card would.
-export function encodeWav(audio: RenderedAudio): Uint8Array<ArrayBuffer> {
+// 16-bit PCM WAV of audio from startFrame on; samples outside [-1, 1] are clipped as a sound card would.
+export function encodeWav(audio: RenderedAudio, startFrame = 0): Uint8Array<ArrayBuffer> {
   const channels = audio.numberOfChannels;
-  const dataSize = audio.length * channels * 2;
+  const length = Math.max(0, audio.length - startFrame);
+  const dataSize = length * channels * 2;
   const bytes = new Uint8Array(44 + dataSize);
   const view = new DataView(bytes.buffer);
   const text = (offset: number, value: string) => {
@@ -73,7 +101,7 @@ export function encodeWav(audio: RenderedAudio): Uint8Array<ArrayBuffer> {
 
   const data = Array.from({ length: channels }, (_, c) => audio.getChannelData(c));
   let offset = 44;
-  for (let i = 0; i < audio.length; i++) {
+  for (let i = startFrame; i < audio.length; i++) {
     for (const channel of data) {
       const sample = Math.max(-1, Math.min(1, channel[i]));
       view.setInt16(offset, Math.round(sample * 32767), true);
