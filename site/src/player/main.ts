@@ -1,6 +1,7 @@
 import "@fontsource-variable/archivo";
 import "@fontsource/fragment-mono";
 import "./player.css";
+import { BeatQueue, TONE, voiceOf } from "../dust/beat";
 import { SAMPLE_NAMES } from "./assets";
 import { createWebAudioSink, type WebAudioSink } from "./audio";
 import type { createEditor } from "./editor";
@@ -138,11 +139,28 @@ function describe(diagnostic: Diagnostic): string {
   return where ? `${where}: ${diagnostic.message}` : diagnostic.message;
 }
 
+const beat = new BeatQueue();
 const sink: AudioSink = {
-  playSample: (...args) => audio?.sink.playSample(...args),
-  playNote: (...args) => audio?.sink.playNote(...args),
-  stopAll: () => audio?.sink.stopAll(),
+  playSample: (name, time, velocity, pan) => {
+    audio?.sink.playSample(name, time, velocity, pan);
+    beat.add(voiceOf(name), time, velocity);
+  },
+  playNote: (note, instrument, time, duration, velocity, pan) => {
+    audio?.sink.playNote(note, instrument, time, duration, velocity, pan);
+    beat.add(TONE, time, velocity);
+  },
+  stopAll: () => {
+    audio?.sink.stopAll();
+    beat.clear();
+  },
 };
+
+// The dust is decoration: it loads after the player and a failure leaves the player as it was.
+import("../dust/field")
+  .then(({ startBeatField }) =>
+    startBeatField(required<HTMLCanvasElement>("[data-dust]"), transport, beat, () => audio?.ctx.currentTime ?? null),
+  )
+  .catch((error) => console.warn("dust:", error));
 
 const gridEditor = mountGridEditor(required("[data-grid-editor]"), initialGrid(), onGridChange, SAMPLE_NAMES);
 const barView = mountBarView(required("[data-bar-view]"));

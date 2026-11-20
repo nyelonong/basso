@@ -1,24 +1,26 @@
 :root {
-  --paper: #dce2df;
-  --paper-deep: #c8d0cc;
-  --paper-bright: #f1f2ed;
-  --ink: #151918;
-  --ink-soft: #48524e;
-  --line: #7f8985;
-  --line-soft: #aeb8b3;
+  --paper: #0d0e0e;
+  --paper-deep: #161918;
+  --paper-bright: #1c2120;
+  --glow: rgba(244, 81, 44, 0.07);
+  --ink: #f0eee9;
+  --ink-soft: #a3a8a5;
+  --line: #2c3230;
+  --line-soft: #3a413e;
   --accent: #f4512c;
-  --accent-ink: #b83216;
-  --accent-pressed: #da3e1c;
-  --panel: #171b1a;
-  --panel-raised: #252b29;
-  --panel-text: #f0f0e9;
-  --panel-muted: #aeb7b3;
+  --accent-ink: #ff6b47;
+  --accent-pressed: #ff7a55;
+  --on-accent: #140806;
+  --panel: #121514;
+  --panel-raised: #1f2523;
+  --panel-text: #f0eee9;
+  --panel-muted: #9aa29e;
   --font-display: "Archivo Variable", "Arial Narrow", sans-serif;
   --font-mono: "Fragment Mono", "SFMono-Regular", Consolas, monospace;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --dur-micro: 120ms;
   --dur-short: 220ms;
-  color-scheme: light;
+  color-scheme: dark;
   font-synthesis: none;
 }
 
@@ -30,6 +32,21 @@ html,
 body {
   background: var(--paper);
   overflow-x: clip;
+}
+
+body {
+  background:
+    radial-gradient(120% 60% at 50% -10%, var(--glow), transparent 70%),
+    var(--paper);
+}
+
+.dust {
+  height: 100%;
+  inset: 0;
+  pointer-events: none;
+  position: fixed;
+  width: 100%;
+  z-index: 0;
 }
 
 html {
@@ -46,7 +63,7 @@ body {
 
 ::selection {
   background: var(--accent);
-  color: var(--ink);
+  color: var(--on-accent);
 }
 
 button,
@@ -93,7 +110,7 @@ pre {
 
 .skip-link {
   background: var(--accent);
-  color: var(--ink);
+  color: var(--on-accent);
   font: 400 0.75rem/1 var(--font-mono);
   inset-block-start: 0.75rem;
   inset-inline-start: 0.75rem;
@@ -114,6 +131,8 @@ footer {
   margin-inline: auto;
   max-width: 96rem;
   min-width: 0;
+  position: relative;
+  z-index: 1;
 }
 
 .site-head {
@@ -180,6 +199,12 @@ footer {
   min-width: 0;
 }
 
+.hero-mark {
+  height: clamp(8rem, 26vw, 15rem);
+  min-width: 0;
+  order: -1;
+}
+
 .hero-label {
   color: var(--ink-soft);
   font: 400 0.66rem/1.4 var(--font-mono);
@@ -233,8 +258,9 @@ h1 span {
 }
 
 .button-primary {
-  background: var(--ink);
-  color: var(--paper-bright);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
 }
 
 .button-quiet {
@@ -327,12 +353,13 @@ h1 span {
 
 .pattern-proof {
   background: var(--accent);
+  color: var(--on-accent);
   display: grid;
   gap: clamp(3rem, 7vw, 7rem);
 }
 
 .pattern-copy > p {
-  color: var(--ink);
+  color: var(--on-accent);
   margin-block-start: 1.4rem;
 }
 
@@ -450,7 +477,7 @@ h1 span {
   background: var(--accent);
   border: 0;
   border-inline-start: 1px solid var(--line);
-  color: var(--ink);
+  color: var(--on-accent);
   cursor: pointer;
   font: 400 0.65rem/1 var(--font-mono);
   min-width: 4.5rem;
@@ -507,8 +534,8 @@ footer > span {
 
 @media (hover: hover) and (pointer: fine) {
   .button-primary:hover {
-    background: var(--accent);
-    color: var(--ink);
+    background: var(--accent-pressed);
+    border-color: var(--accent-pressed);
     transform: translateY(-1px);
   }
 
@@ -607,9 +634,19 @@ footer > span {
   }
 }
 
-@media (min-width: 90rem) {
+@media (min-width: 64rem) {
   .hero {
-    grid-template-columns: minmax(0, 0.95fr) minmax(40rem, 1.05fr);
+    align-items: center;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  }
+
+  .hero-mark {
+    height: min(26rem, 32vw);
+    order: 0;
+  }
+
+  .hero h1 {
+    font-size: clamp(3.6rem, 6.4vw, 7.4rem);
   }
 }
 

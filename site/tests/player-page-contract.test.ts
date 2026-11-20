@@ -22,6 +22,14 @@ describe("Basso player page contract", () => {
     expect(page).toContain("next bar");
   });
 
+  it("gives the first-time visitor the promise with the instructions", () => {
+    expect(page).toContain("Save the pattern. Keep the beat.");
+  });
+
+  it("has a decorative dust canvas that screen readers skip", () => {
+    expect(page).toMatch(/<canvas class="dust" data-dust aria-hidden="true">/);
+  });
+
   it("links to the about page and the source", () => {
     expect(page).toContain('href="/about"');
     expect(page).toContain("https://github.com/nyelonong/basso");

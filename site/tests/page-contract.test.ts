@@ -48,6 +48,11 @@ describe("Basso about page contract", () => {
     expect(page).toContain('aria-live="polite"');
   });
 
+  it("draws the dust mark on a canvas behind the page, described for screen readers", () => {
+    expect(page).toMatch(/<canvas class="dust" data-dust aria-hidden="true">/);
+    expect(page).toMatch(/<div[^>]*data-mark[^>]*role="img"[^>]*aria-label="[^"]+"/);
+  });
+
   it("does not fall back to generic AI landing-page copy", () => {
     expect(page).not.toMatch(/supercharge|unleash|seamless|revolutionary/i);
   });
