@@ -44,7 +44,7 @@ describe("createWebAudioSink", () => {
       node = node.connections[0];
       chain.push(node.kind);
     }
-    expect(chain).toEqual(["gain", "panner", "gain", "compressor", "shaper", "destination"]);
+    expect(chain).toEqual(["gain", "panner", "gain", "compressor", "shaper", "gain", "destination"]);
     const limiter = ctx.nodes.find((n): n is FakeCompressor => n instanceof FakeCompressor)!;
     expect([limiter.threshold.value, limiter.knee.value, limiter.ratio.value]).toEqual([-6, 0, 20]);
     expect([limiter.attack.value, limiter.release.value]).toEqual([0.001, 0.1]);

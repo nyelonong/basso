@@ -18,8 +18,12 @@ export type VoiceFactory = {
 // Headroom for dense patterns: many full-velocity voices summed straight into
 // the output clipped about 13% of funkot's samples before this bus existed.
 export const MASTER_GAIN = 0.5;
-const SOFT_CLIP_KNEE = 0.8;
+export const SOFT_CLIP_KNEE = 0.8;
 const SOFT_CLIP_CURVE_POINTS = 2049;
+// The clipper's 4x oversampling filter overshoots its curve by a few percent on
+// sharp transients, which reached full scale on a dense pattern. Trimming the
+// output keeps the overshoot under it.
+export const MASTER_OUTPUT_TRIM = 0.9;
 
 // Leaves signal below the knee untouched and bends louder signal toward
 // SOFT_CLIP_KNEE + (1 - SOFT_CLIP_KNEE) * tanh(1), so the output never reaches full scale.
@@ -46,7 +50,9 @@ export function createMasterBus(ctx: BaseAudioContext): AudioNode {
     softClip((i / (SOFT_CLIP_CURVE_POINTS - 1)) * 2 - 1),
   );
   clipper.oversample = "4x";
-  gain.connect(limiter).connect(clipper).connect(ctx.destination);
+  const trim = ctx.createGain();
+  trim.gain.value = MASTER_OUTPUT_TRIM;
+  gain.connect(limiter).connect(clipper).connect(trim).connect(ctx.destination);
   return gain;
 }
 
