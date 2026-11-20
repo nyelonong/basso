@@ -10,7 +10,7 @@ install, no account. [About](https://basso.discoverd.io/about) ·
 ## Browser player
 
 The player lives in [`site/`](site/). It runs the same Fennel pattern format
-and 808 samples as the command-line version, entirely in the browser:
+and samples as the command-line version, entirely in the browser:
 
 - Start from the starter grid or one of the examples in `patterns/`, then
   press Play.
@@ -52,6 +52,14 @@ players understand it:
 See `patterns/shuffle-groove.fnl` for a full example with a fill every fourth
 bar.
 
+### Sounds
+
+`sound/808/` holds the classic 808 samples plus a kit synthesized in code for
+harder, faster styles such as funkot: `kick_hard`, `snare_hard`,
+`kendang_dung`, `kendang_tung`, `kendang_tak`, `siren`, `hoover`, `stab`
+(A minor), `rev_cymbal` (one bar at 180 BPM) and `zap`. Rebuild them with
+`go run ./sound/gen`.
+
 Run it locally with `cd site && npm install && npm run dev`. See
 [`site/README.md`](site/README.md) for checks and deployment.
 
@@ -59,7 +67,7 @@ Run it locally with `cd site && npm install && npm run dev`. See
 
 The original Go player still builds and works, but it is frozen: new
 features land in the browser player first. It plays a pattern file from disk
-and reloads it when you save, which suits editing in your own editor. The 808
+and reloads it when you save, which suits editing in your own editor. The
 samples are built into the binary, so it runs from any directory.
 
 ### Install
