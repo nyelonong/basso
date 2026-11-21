@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AudioSink, Bar, BarProvider, Hit } from "../../src/player/model";
-import { encodeWav, renderPattern, type RenderContext, type RenderedAudio } from "../../src/player/render";
+import { encodeWav, renderAudio, renderPattern, type RenderContext, type RenderedAudio } from "../../src/player/render";
 
 type Call = { kind: string; time: number; duration?: number };
 
@@ -19,12 +19,13 @@ function harness() {
         numberOfChannels: channels,
         sampleRate,
         length: frames,
-        getChannelData: () => new Float32Array(frames),
+        getChannelData: () => Float32Array.from({ length: frames }, (_, i) => i),
       };
       return { startRendering: async () => audio } as unknown as RenderContext;
     },
     fetchBytes: async () => new ArrayBuffer(0),
     createSink: async () => sink,
+    measureDelay: async () => 400,
   };
   return { calls, created, deps };
 }
@@ -44,8 +45,10 @@ describe("renderPattern", () => {
     const result = await renderPattern(provider, 2, h.deps);
     // 16 steps at 0.125 s, then 4 steps at 0.25 s.
     expect(result).toMatchObject({ ok: true, seconds: 3 });
-    expect(h.created).toEqual([{ channels: 2, frames: 3 * 44100, sampleRate: 44100 }]);
-    expect(h.calls.map((c) => c.time)).toEqual([0, 2 + 1.5 * 0.25]);
+    // A 0.1 s lead-in (4410 frames) and the 400-frame bus delay, both trimmed from the front of the file.
+    expect(h.created).toEqual([{ channels: 2, frames: 4410 + 400 + 3 * 44100, sampleRate: 44100 }]);
+    if (result.ok) expect(result.wav.length).toBe(44 + 3 * 44100 * 4);
+    expect(h.calls.map((c) => c.time)).toEqual([0.1, 0.1 + 2 + 1.5 * 0.25]);
   });
 
   it("refuses renders longer than five minutes", async () => {
@@ -54,6 +57,15 @@ describe("renderPattern", () => {
     const result = await renderPattern(bars({ bpm: 20, steps: 256, swing: 50, hits: [] }), 2, h.deps);
     expect(result).toEqual({ ok: false, error: { message: "2 bars last 384 seconds; renders are limited to 300" } });
     expect(h.created).toEqual([]);
+  });
+
+  it("trims the lead-in and bus delay so frame 0 is the first downbeat", async () => {
+    const h = harness();
+    const result = await renderAudio(bars({ bpm: 120, steps: 16, swing: 50, hits: [] }), 1, h.deps);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.audio.length).toBe(2 * 44100);
+    expect(result.audio.getChannelData(0)[0]).toBe(4410 + 400);
+    expect(result.bars).toHaveLength(1);
   });
 
   it("reports the first failing bar instead of rendering", async () => {
