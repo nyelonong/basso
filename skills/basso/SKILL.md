@@ -150,5 +150,5 @@ about 1 dB in level.
 | Breakbeat | 130 to 140 | 52 to 56 | Syncopated kick and snare with ghost notes (`o`), rolling bass, chopped fills every 4th bar |
 | House | 120 to 128 | 50 to 58 | Kick on every beat, clap on 2 and 4, off-beat open hat, chord stabs |
 
-Full examples are in `patterns/` in the repository: `jedag-jedug.fnl`,
-`breakbeat.fnl`, `shuffle-groove.fnl` and `indo-bounce.fnl`.
+Full examples are in `patterns/` in the repository: `funkot.fnl`,
+`jedag-jedug.fnl`, `breakbeat.fnl`, `shuffle-groove.fnl` and `indo-bounce.fnl`.

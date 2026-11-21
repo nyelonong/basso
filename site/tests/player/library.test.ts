@@ -119,8 +119,8 @@ describe("Library", () => {
   });
 
   it("imports a .fnl file as a code entry", () => {
-    const entry = library().importFnl("funkot.fnl", "(fn pattern [bar] [])");
-    expect(entry).toMatchObject({ name: "funkot", kind: "code", source: "(fn pattern [bar] [])", readOnly: false });
+    const entry = library().importFnl("my-beat.fnl", "(fn pattern [bar] [])");
+    expect(entry).toMatchObject({ name: "my-beat", kind: "code", source: "(fn pattern [bar] [])", readOnly: false });
   });
 
   it("exports code unchanged and grids as Fennel", () => {
