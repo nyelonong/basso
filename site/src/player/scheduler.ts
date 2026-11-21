@@ -1,4 +1,4 @@
-import { stepSeconds, type AudioSink, type Bar, type Diagnostic } from "./model";
+import { stepSeconds, swingDelay, type AudioSink, type Bar, type Diagnostic } from "./model";
 import type { PatternSlot } from "./slot";
 
 export interface AudioClock {
@@ -63,15 +63,21 @@ export class Scheduler {
     const { bar, error } = this.slot.barFor(this.nextBar);
     if (error) this.events.onError(error);
     this.events.onBar(this.nextBar, bar, start);
-    if (bar) {
-      const step = stepSeconds(bar.bpm);
-      for (const hit of bar.hits) {
-        const time = start + hit.step * step;
-        if (hit.kind === "sample") this.sink.playSample(hit.sample, time, hit.velocity, hit.pan);
-        else this.sink.playNote(hit.note, hit.instrument, time, hit.length * step, hit.velocity, hit.pan);
-      }
-    }
-    this.nextBarStart = start + (bar ? bar.steps * stepSeconds(bar.bpm) : IDLE_BAR_SECONDS);
+    this.nextBarStart = start + (bar ? scheduleBar(this.sink, bar, start) : IDLE_BAR_SECONDS);
     this.nextBar++;
   }
+}
+
+// Plays one bar's hits from start and returns the bar's length in seconds.
+// Live playback and offline rendering both go through here so they keep the same timing.
+export function scheduleBar(sink: AudioSink, bar: Bar, start: number): number {
+  const step = stepSeconds(bar.bpm);
+  for (const hit of bar.hits) {
+    const delay = swingDelay(bar.swing, hit.step);
+    const time = start + (hit.step + delay) * step;
+    if (hit.kind === "sample") sink.playSample(hit.sample, time, hit.velocity, hit.pan);
+    // A swung note still ends on the grid, so it never crosses into the next bar or voice window.
+    else sink.playNote(hit.note, hit.instrument, time, (hit.length - delay) * step, hit.velocity, hit.pan);
+  }
+  return bar.steps * step;
 }

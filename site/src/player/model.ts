@@ -10,7 +10,8 @@ export type Hit = { step: number; velocity: number; pan: number } & (
 export type SampleHit = Extract<Hit, { kind: "sample" }>;
 export type NoteHit = Extract<Hit, { kind: "note" }>;
 
-export type Bar = { hits: readonly Hit[]; bpm: number; steps: number };
+// swing is the MPC-style percentage: 50 plays straight, 75 is the hardest shuffle.
+export type Bar = { hits: readonly Hit[]; bpm: number; steps: number; swing: number };
 
 export type Diagnostic = { message: string; line?: number; bar?: number };
 
@@ -37,4 +38,9 @@ export type GridPattern = { bpm: number; steps: number; rows: GridRow[] };
 
 export function stepSeconds(bpm: number): number {
   return 60 / (bpm * 4);
+}
+
+// Mirrors SwingDelay in internal/engine/validation.go: steps an odd step plays late.
+export function swingDelay(swing: number, step: number): number {
+  return step % 2 === 0 ? 0 : swing / 50 - 1;
 }

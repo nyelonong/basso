@@ -5,10 +5,13 @@ import { BeatQueue, TONE, voiceOf } from "../dust/beat";
 import { SAMPLE_NAMES } from "./assets";
 import { createWebAudioSink, type WebAudioSink } from "./audio";
 import type { createEditor } from "./editor";
-import { gridToFennel } from "./grid";
+import { fennelProvider } from "./evaluate";
+import type { FennelRuntime } from "./fennel";
+import { gridProvider, gridToFennel } from "./grid";
 import { mountBarView, mountGridEditor } from "./grid-view";
 import { Library, SHARED_ID, STARTER_ID, type Entry } from "./library";
-import { stepSeconds, type AudioSink, type Bar, type Diagnostic, type GridPattern } from "./model";
+import { stepSeconds, type AudioSink, type Bar, type BarProvider, type Diagnostic, type GridPattern } from "./model";
+import { renderPattern } from "./render";
 import { Session } from "./session";
 import {
   buildLink,
@@ -80,6 +83,9 @@ const shareField = required<HTMLInputElement>("[data-share-field]");
 const sharedBanner = required<HTMLElement>("[data-shared-banner]");
 const sharedMessage = required<HTMLElement>("[data-shared-message]");
 const sharedSave = required<HTMLButtonElement>("[data-shared-save]");
+const exportWavButton = required<HTMLButtonElement>("[data-export-wav]");
+
+const EXPORT_BARS = 8;
 
 const SHARED_BANNER_TEXT = "Shared pattern. Press Play to hear it. Editing makes your own copy.";
 const CODE_SHARE_TEXT = "Code patterns cannot be shared as links yet. Use Export .fnl.";
@@ -89,6 +95,7 @@ let selected: Entry = library.get(recall(SELECTED_KEY) ?? "") ?? library.get(STA
 let playing = false;
 let audio: { ctx: AudioContext; sink: WebAudioSink } | null = null;
 let loadingAudio: Promise<void> | null = null;
+let fennelRuntime: FennelRuntime | null = null;
 let loadingEditor = false;
 let upcoming: { n: number; bar: Bar | null; start: number }[] = [];
 let shownBar: number | null = null;
@@ -341,16 +348,18 @@ function frame() {
   requestAnimationFrame(frame);
 }
 
+async function fetchBytes(url: string): Promise<ArrayBuffer> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`could not load ${url}`);
+  return response.arrayBuffer();
+}
+
 async function ensureAudio() {
   if (audio) return;
   loadingAudio ??= (async () => {
     const ctx = new AudioContext();
     await ctx.resume();
-    const loaded = await createWebAudioSink(ctx, async (url) => {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`could not load ${url}`);
-      return response.arrayBuffer();
-    });
+    const loaded = await createWebAudioSink(ctx, fetchBytes);
     audio = { ctx, sink: loaded };
   })();
   try {
@@ -512,12 +521,53 @@ sharedSave.addEventListener("click", () => {
   announce(`Saved as ${copy.name}.`);
 });
 
-required<HTMLButtonElement>("[data-export]").addEventListener("click", () => {
-  const { fileName, text } = library.exportFnl(selected.id);
-  const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+function download(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
   const link = Object.assign(document.createElement("a"), { href: url, download: fileName });
   link.click();
-  URL.revokeObjectURL(url);
+  // Some browsers drop the download if the URL is revoked in the same task as the click.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+required<HTMLButtonElement>("[data-export]").addEventListener("click", () => {
+  const { fileName, text } = library.exportFnl(selected.id);
+  download(new Blob([text], { type: "text/plain" }), fileName);
+});
+
+function savedProvider(runtime: FennelRuntime, entry: Entry): BarProvider | Diagnostic {
+  if (entry.kind === "grid") return gridProvider(entry.grid, SAMPLE_NAMES);
+  const compiled = runtime.compile(entry.source);
+  return compiled.ok ? fennelProvider(runtime, compiled.pattern, SAMPLE_NAMES, Math.random) : compiled.error;
+}
+
+exportWavButton.addEventListener("click", async () => {
+  if (!fennelRuntime) return;
+  const entry = selected;
+  const provider = savedProvider(fennelRuntime, entry);
+  if (typeof provider !== "function") {
+    announce(`Not exported. ${describe(provider)}`);
+    return;
+  }
+  const fileName = library.exportFnl(entry.id).fileName.replace(/\.fnl$/, ".wav");
+  exportWavButton.disabled = true;
+  announce(`Rendering ${EXPORT_BARS} bars.`);
+  try {
+    const result = await renderPattern(provider, EXPORT_BARS, {
+      createContext: (channels, frames, sampleRate) => new OfflineAudioContext(channels, frames, sampleRate),
+      fetchBytes,
+    });
+    if (!result.ok) {
+      announce(`Not exported. ${describe(result.error)}`);
+      return;
+    }
+    download(new Blob([result.wav], { type: "audio/wav" }), fileName);
+    announce(`Exported ${EXPORT_BARS} bars as ${fileName}.`);
+  } catch (error) {
+    console.error(error);
+    announce("The WAV could not be rendered in this browser.");
+  } finally {
+    exportWavButton.disabled = false;
+  }
 });
 
 required<HTMLInputElement>("[data-import]").addEventListener("change", async (event) => {
@@ -553,11 +603,14 @@ renderEntry();
 barView.show(null);
 setReadout(null, null, null);
 transport.disabled = true;
+exportWavButton.disabled = true;
 announce("Loading the Fennel runtime.");
 
 import("./fennel-loader")
   .then(({ loadFennelRuntime }) => loadFennelRuntime())
   .then((runtime) => {
+    fennelRuntime = runtime;
+    exportWavButton.disabled = false;
     session = new Session(
       {
         runtime,

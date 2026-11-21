@@ -59,7 +59,7 @@ export function fennelProvider(
         error: { message: `hit ${emptyName} must have exactly one of sample or note`, bar: barNumber },
       };
     }
-    const bar: Bar = { hits, bpm: result.bpm, steps: result.steps };
+    const bar: Bar = { hits, bpm: result.bpm, steps: result.steps, swing: result.swing };
     const invalid = validateBar(bar, sampleNames);
     if (invalid !== null) return { ok: false, error: { message: invalid, bar: barNumber } };
     return { ok: true, bar };

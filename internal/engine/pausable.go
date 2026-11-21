@@ -172,9 +172,10 @@ func (e *Engine) Stream(ctx context.Context, provider PatternProvider) error {
 
 		stepDuration := time.Minute / time.Duration(bpm*4)
 		for _, h := range hits {
-			begin := barStart + time.Duration(h.Step)*stepDuration
+			begin := barStart + time.Duration((float64(h.Step)+h.Delay)*float64(stepDuration))
 			if h.Note != "" {
-				sustain := time.Duration(h.Length) * stepDuration
+				// A swung note still ends on the grid, so it never crosses into the next bar or voice window.
+				sustain := time.Duration((float64(h.Length) - h.Delay) * float64(stepDuration))
 				e.sink.SetFireNote(h.Note, h.Instrument, begin, sustain, h.Velocity, h.Pan)
 			} else {
 				e.sink.SetFire(h.Sample, begin, 0, h.Velocity, h.Pan)

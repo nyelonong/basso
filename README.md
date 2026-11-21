@@ -10,24 +10,82 @@ install, no account. [About](https://basso.discoverd.io/about) ·
 ## Browser player
 
 The player lives in [`site/`](site/). It runs the same Fennel pattern format
-and 808 samples as the command-line version, entirely in the browser:
+and samples as the command-line version, entirely in the browser:
 
 - Start from the starter grid or one of the examples in `patterns/`, then
   press Play.
 - Click steps, or write Fennel and press Update (Cmd/Ctrl+Enter). Changes
   apply at the next bar; a broken change is reported and the beat carries on.
 - Patterns save in your browser and import/export as `.fnl` files.
+- Export WAV renders 8 bars of the saved pattern to a 16-bit stereo file that
+  ends exactly on the bar line, so it loops cleanly.
 - Share a grid beat as a link: the pattern travels inside the link, with no
   account or server. Code patterns cannot be shared as links yet.
 
+### Short notation and swing
+
+A pattern can spell a bar as a string instead of one table per hit. Both
+players understand it:
+
+```fennel
+(swing 62)
+
+(fn pattern [bar]
+  (stack
+    (seq "kick2.wav" "x... ..x. x... ....")
+    (seq "cl_hihat.wav" "x.xo x.xo x.xo x.x." {:velocity 0.6 :pan 0.3})
+    (melody "bass" "C2 _ . . . . Eb2 _ C2 _ . . . . G1 _")))
+```
+
+- `seq` plays a sample: `x` hits, `o` is a soft ghost hit at half velocity,
+  `.` or `-` rests. Spaces and `|` are ignored, so group steps however reads
+  best. An options table such as `{:pan 0 :velocity 0.6}` is copied onto
+  every hit; its `:velocity` scales them. Options cannot set `:step`,
+  `:sample` or `:note`.
+- `melody` plays an instrument: each note name is one step, `_` holds the note
+  one step longer, `.` rests. Options cannot set `:length`; use `_`.
+- `stack` joins lists of hits and single hits into one list, so the short form
+  mixes freely with `{:step ...}` tables. It skips `nil`, so
+  `(stack beat (when fill? fill))` works.
+- `(swing n)` delays every odd step. `50` (the default) is straight, `66` is
+  a triplet shuffle, and `75` is the hardest; values outside `[50,75]` are
+  refused. A swung note still ends on the grid. Grid patterns stay straight.
+
+See `patterns/shuffle-groove.fnl` for a full example with a fill every fourth
+bar.
+
+### Sounds
+
+`sound/808/` holds the classic 808 samples plus a kit synthesized in code for
+harder, faster styles such as funkot: `kick_hard`, `snare_hard`,
+`kendang_dung`, `kendang_tung`, `kendang_tak`, `siren`, `hoover`, `stab`
+(A minor), `rev_cymbal` (one bar at 180 BPM) and `zap`. Rebuild them with
+`go run ./sound/gen`.
+
 Run it locally with `cd site && npm install && npm run dev`. See
 [`site/README.md`](site/README.md) for checks and deployment.
+
+## Use basso from an AI agent
+
+`site/cli/basso.mjs` runs the browser player's engine in Node, so an agent can
+check, render, measure and play patterns from a terminal:
+
+    cd site && npm install
+    node site/cli/basso.mjs check patterns/jedag-jedug.fnl
+    node site/cli/basso.mjs render patterns/breakbeat.fnl --bars 8 --out breakbeat.wav --json
+    node site/cli/basso.mjs play patterns/jedag-jedug.fnl
+
+`render` reports peak and average level, how hard the limiter worked, low/mid/
+high balance and per-bar levels, with warnings for common mix problems.
+[`skills/basso/SKILL.md`](skills/basso/SKILL.md) teaches an agent the pattern
+format and the write, check, render, adjust loop. For Claude Code, copy or
+link `skills/basso` into `~/.claude/skills/`.
 
 ## Command-line version (frozen)
 
 The original Go player still builds and works, but it is frozen: new
 features land in the browser player first. It plays a pattern file from disk
-and reloads it when you save, which suits editing in your own editor. The 808
+and reloads it when you save, which suits editing in your own editor. The
 samples are built into the binary, so it runs from any directory.
 
 ### Install

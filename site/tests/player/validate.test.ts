@@ -13,7 +13,7 @@ const note = (step: number, instrument: "bass" | "lead" | "pad", length = 1): No
   velocity: 1,
   pan: 0,
 });
-const bar = (hits: Hit[], over: Partial<Bar> = {}): Bar => ({ hits, bpm: 120, steps: 16, ...over });
+const bar = (hits: Hit[], over: Partial<Bar> = {}): Bar => ({ hits, bpm: 120, steps: 16, swing: 50, ...over });
 
 describe("validateBar", () => {
   it("accepts a valid bar", () => {
@@ -74,5 +74,13 @@ describe("validateBar", () => {
   it("frees a voice when a note ends", () => {
     const hits = [...Array.from({ length: 8 }, () => note(0, "lead", 2)), ...Array.from({ length: 8 }, () => note(2, "pad", 2))];
     expect(validateBar(bar(hits), samples)).toBeNull();
+  });
+
+  it("accepts swing from 50 to 75 and rejects the rest", () => {
+    expect(validateBar(bar([], { swing: 50 }), samples)).toBeNull();
+    expect(validateBar(bar([], { swing: 75 }), samples)).toBeNull();
+    expect(validateBar(bar([], { swing: 49 }), samples)).toBe("swing 49 must be in [50,75]");
+    expect(validateBar(bar([], { swing: 76 }), samples)).toBe("swing 76 must be in [50,75]");
+    expect(validateBar(bar([], { swing: Number.NaN }), samples)).toBe("swing NaN must be in [50,75]");
   });
 });

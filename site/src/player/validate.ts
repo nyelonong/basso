@@ -67,5 +67,6 @@ export function validateBar(bar: Bar, sampleNames: readonly string[]): string | 
       return `lead/pad overlap ${active} at step ${step} exceeds ${ELECTRONIC_MAX_VOICES} voices`;
     }
   }
+  if (!finiteIn(bar.swing, 50, 75)) return `swing ${bar.swing} must be in [50,75]`;
   return null;
 }

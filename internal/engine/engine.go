@@ -20,6 +20,7 @@ type Hit struct {
 	Length     int    // sustain, in steps — meaningful for Note hits only; ignored for Sample hits
 	Pan        float64
 	Velocity   float64
+	Delay      float64 // steps the hit plays after Step, from swing; in [0,0.5]
 }
 
 // PatternProvider supplies the hits, tempo (bpm), and bar length

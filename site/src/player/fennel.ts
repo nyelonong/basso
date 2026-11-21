@@ -1,4 +1,5 @@
 import { LuaFactory, type LuaEngine } from "wasmoon";
+import preludeSource from "../../../internal/engine/fennel/prelude.lua?raw";
 import type { Diagnostic } from "./model";
 
 export type CompiledPattern = { readonly lua: string };
@@ -8,7 +9,7 @@ export type CompileResult =
   | { ok: false; error: Diagnostic };
 
 export type RunResult =
-  | { ok: true; bpm: number; steps: number; rawHits: Record<string, unknown>[] }
+  | { ok: true; bpm: number; steps: number; swing: number; rawHits: Record<string, unknown>[] }
   | { ok: false; error: Diagnostic };
 
 export interface FennelRuntime {
@@ -35,8 +36,15 @@ const UNSAFE_GLOBALS = [
 const BRIDGE = `
 local fennel = assert(load(__basso_compiler_source, "=fennel"))()
 __basso_compiler_source = nil
+-- The helpers live outside _G, so a pattern that reaches the real globals
+-- through load cannot remove or replace them for later runs.
+local helpers = setmetatable({}, { __index = _G })
+assert(load(__basso_prelude_source, "=prelude", "t", helpers))()
+__basso_prelude_source = nil
+local helper_names = { "seq", "melody", "stack" }
 bpm = function() end
 steps = function() end
+swing = function() end
 for _, name in ipairs(__basso_unsafe) do _G[name] = nil end
 __basso_unsafe = nil
 
@@ -56,6 +64,7 @@ local function fresh_env()
       end
     end
   end
+  for _, name in ipairs(helper_names) do env[name] = rawget(helpers, name) end
   env._G = env
   return env
 end
@@ -69,10 +78,15 @@ function __basso_compile(source)
 end
 
 function __basso_run(lua_source, bar)
-  local bpm_value, steps_value = 120, 16
+  local bpm_value, steps_value, swing_value = 120, 16, 50
   local env = fresh_env()
   env.bpm = function(n) bpm_value = math.tointeger(n // 1) or n end
   env.steps = function(n) steps_value = math.tointeger(n // 1) or n end
+  env.swing = function(n)
+    local value = tonumber(n)
+    if value == nil then error("bad argument #1 to 'swing' (number expected)", 2) end
+    swing_value = value
+  end
   local chunk, err = load(lua_source, "=${CHUNK_NAME}", "t", env)
   if not chunk then return { ok = false, message = "load compiled source: " .. tostring(err) } end
   local ok, pattern = pcall(chunk)
@@ -94,7 +108,7 @@ function __basso_run(lua_source, bar)
     end
     rows[i] = row
   end
-  return { ok = true, bpm = bpm_value, steps = steps_value, count = #rows, hits = rows }
+  return { ok = true, bpm = bpm_value, steps = steps_value, swing = swing_value, count = #rows, hits = rows }
 end
 `;
 
@@ -122,7 +136,7 @@ function diagnostic(raw: string, bar?: number): Diagnostic {
 
 type RawRun =
   | { ok: false; message: string }
-  | { ok: true; bpm: number; steps: number; count: number; hits: Record<string, unknown>[] | Record<number, Record<string, unknown>> };
+  | { ok: true; bpm: number; steps: number; swing: number; count: number; hits: Record<string, unknown>[] | Record<number, Record<string, unknown>> };
 
 function toArray(hits: RawRun & { ok: true }): Record<string, unknown>[] {
   if (Array.isArray(hits.hits)) return hits.hits;
@@ -137,6 +151,7 @@ export async function createFennelRuntime(
 ): Promise<FennelRuntime> {
   const engine: LuaEngine = await new LuaFactory(wasmUrl).createEngine({ injectObjects: false });
   engine.global.set("__basso_compiler_source", compilerSource);
+  engine.global.set("__basso_prelude_source", preludeSource);
   engine.global.set("__basso_unsafe", UNSAFE_GLOBALS);
   engine.doStringSync(BRIDGE);
   const compileFn = engine.global.get("__basso_compile") as (
@@ -163,7 +178,7 @@ export async function createFennelRuntime(
         return { ok: false, error: diagnostic(messageOf(error), bar) };
       }
       if (!result.ok) return { ok: false, error: diagnostic(result.message, bar) };
-      return { ok: true, bpm: result.bpm, steps: result.steps, rawHits: toArray(result) };
+      return { ok: true, bpm: result.bpm, steps: result.steps, swing: result.swing, rawHits: toArray(result) };
     },
     close() {
       engine.global.close();
