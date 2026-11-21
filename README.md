@@ -65,6 +65,22 @@ harder, faster styles such as funkot: `kick_hard`, `snare_hard`,
 Run it locally with `cd site && npm install && npm run dev`. See
 [`site/README.md`](site/README.md) for checks and deployment.
 
+## Use basso from an AI agent
+
+`site/cli/basso.mjs` runs the browser player's engine in Node, so an agent can
+check, render, measure and play patterns from a terminal:
+
+    cd site && npm install
+    node site/cli/basso.mjs check patterns/jedag-jedug.fnl
+    node site/cli/basso.mjs render patterns/breakbeat.fnl --bars 8 --out breakbeat.wav --json
+    node site/cli/basso.mjs play patterns/jedag-jedug.fnl
+
+`render` reports peak and average level, how hard the limiter worked, low/mid/
+high balance and per-bar levels, with warnings for common mix problems.
+[`skills/basso/SKILL.md`](skills/basso/SKILL.md) teaches an agent the pattern
+format and the write, check, render, adjust loop. For Claude Code, copy or
+link `skills/basso` into `~/.claude/skills/`.
+
 ## Command-line version (frozen)
 
 The original Go player still builds and works, but it is frozen: new

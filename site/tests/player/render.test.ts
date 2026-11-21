@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AudioSink, Bar, BarProvider, Hit } from "../../src/player/model";
-import { encodeWav, renderPattern, type RenderContext, type RenderedAudio } from "../../src/player/render";
+import { encodeWav, renderAudio, renderPattern, type RenderContext, type RenderedAudio } from "../../src/player/render";
 
 type Call = { kind: string; time: number; duration?: number };
 
@@ -19,7 +19,7 @@ function harness() {
         numberOfChannels: channels,
         sampleRate,
         length: frames,
-        getChannelData: () => new Float32Array(frames),
+        getChannelData: () => Float32Array.from({ length: frames }, (_, i) => i),
       };
       return { startRendering: async () => audio } as unknown as RenderContext;
     },
@@ -59,6 +59,15 @@ describe("renderPattern", () => {
     expect(h.created).toEqual([]);
   });
 
+  it("trims the lead-in and bus delay so frame 0 is the first downbeat", async () => {
+    const h = harness();
+    const result = await renderAudio(bars({ bpm: 120, steps: 16, swing: 50, hits: [] }), 1, h.deps);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.audio.length).toBe(2 * 44100);
+    expect(result.audio.getChannelData(0)[0]).toBe(4410 + 400);
+    expect(result.bars).toHaveLength(1);
+  });
+
   it("reports the first failing bar instead of rendering", async () => {
     const h = harness();
     const provider: BarProvider = (n) =>
@@ -87,12 +96,6 @@ describe("encodeWav", () => {
     expect(view.getUint32(24, true)).toBe(44100);
     expect(view.getUint16(34, true)).toBe(16);
     expect(view.getUint32(40, true)).toBe(8);
-  });
-
-  it("drops the frames before startFrame", () => {
-    const view = new DataView(encodeWav(audio([0.1, 0.5], [0.2, -0.5]), 1).buffer);
-    expect(view.getUint32(40, true)).toBe(4);
-    expect([view.getInt16(44, true), view.getInt16(46, true)]).toEqual([16384, -16383]);
   });
 
   it("interleaves channels and clips samples past full scale", () => {

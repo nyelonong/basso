@@ -46,10 +46,19 @@ export async function measureMasterBusDelay(createContext: RenderDeps["createCon
 
 export type RenderResult = { ok: true; wav: Uint8Array<ArrayBuffer>; seconds: number } | { ok: false; error: Diagnostic };
 
-// Evaluates every bar before rendering, so a broken pattern reports its error
-// instead of producing a file with silent gaps. The file ends exactly on the
-// last bar line so it loops cleanly; sounds still ringing there are cut.
+export type AudioResult =
+  | { ok: true; audio: RenderedAudio; bars: readonly Bar[]; seconds: number }
+  | { ok: false; error: Diagnostic };
+
 export async function renderPattern(provider: BarProvider, barCount: number, deps: RenderDeps): Promise<RenderResult> {
+  const result = await renderAudio(provider, barCount, deps);
+  return result.ok ? { ok: true, wav: encodeWav(result.audio), seconds: result.seconds } : result;
+}
+
+// Evaluates every bar before rendering, so a broken pattern reports its error
+// instead of producing audio with silent gaps. The audio ends exactly on the
+// last bar line so it loops cleanly; sounds still ringing there are cut.
+export async function renderAudio(provider: BarProvider, barCount: number, deps: RenderDeps): Promise<AudioResult> {
   const bars: Bar[] = [];
   for (let n = 0; n < barCount; n++) {
     const result = provider(n);
@@ -73,14 +82,22 @@ export async function renderPattern(provider: BarProvider, barCount: number, dep
   const sink = await (deps.createSink ?? createWebAudioSink)(ctx, deps.fetchBytes);
   let start = LEAD_IN_SECONDS;
   for (const bar of bars) start += scheduleBar(sink, bar, start);
-  return { ok: true, wav: encodeWav(await ctx.startRendering(), skip), seconds };
+  return { ok: true, audio: trimStart(await ctx.startRendering(), skip), bars, seconds };
 }
 
-// 16-bit PCM WAV of audio from startFrame on; samples outside [-1, 1] are clipped as a sound card would.
-export function encodeWav(audio: RenderedAudio, startFrame = 0): Uint8Array<ArrayBuffer> {
+function trimStart(audio: RenderedAudio, frames: number): RenderedAudio {
+  return {
+    numberOfChannels: audio.numberOfChannels,
+    sampleRate: audio.sampleRate,
+    length: Math.max(0, audio.length - frames),
+    getChannelData: (channel) => audio.getChannelData(channel).subarray(frames),
+  };
+}
+
+// 16-bit PCM WAV; samples outside [-1, 1] are clipped as a sound card would.
+export function encodeWav(audio: RenderedAudio): Uint8Array<ArrayBuffer> {
   const channels = audio.numberOfChannels;
-  const length = Math.max(0, audio.length - startFrame);
-  const dataSize = length * channels * 2;
+  const dataSize = audio.length * channels * 2;
   const bytes = new Uint8Array(44 + dataSize);
   const view = new DataView(bytes.buffer);
   const text = (offset: number, value: string) => {
@@ -101,7 +118,7 @@ export function encodeWav(audio: RenderedAudio, startFrame = 0): Uint8Array<Arra
 
   const data = Array.from({ length: channels }, (_, c) => audio.getChannelData(c));
   let offset = 44;
-  for (let i = startFrame; i < audio.length; i++) {
+  for (let i = 0; i < audio.length; i++) {
     for (const channel of data) {
       const sample = Math.max(-1, Math.min(1, channel[i]));
       view.setInt16(offset, Math.round(sample * 32767), true);
