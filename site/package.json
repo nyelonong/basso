@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "vite",
+    "basso": "node cli/basso.mjs",
     "build": "vite build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "@types/node": "22.19.19",
+    "node-web-audio-api": "2.2.0",
     "typescript": "5.9.3",
     "vite": "8.2.2",
     "vitest": "4.1.11",

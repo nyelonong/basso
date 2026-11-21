@@ -15,6 +15,47 @@ export type VoiceFactory = {
   ): AudioScheduledSourceNode[];
 };
 
+// Headroom for dense patterns: many full-velocity voices summed straight into
+// the output clipped about 13% of funkot's samples before this bus existed.
+export const MASTER_GAIN = 0.5;
+export const SOFT_CLIP_KNEE = 0.8;
+const SOFT_CLIP_CURVE_POINTS = 2049;
+// The clipper's 4x oversampling filter overshoots its curve by a few percent on
+// sharp transients, which reached full scale on a dense pattern. Trimming the
+// output keeps the overshoot under it.
+export const MASTER_OUTPUT_TRIM = 0.9;
+
+// Leaves signal below the knee untouched and bends louder signal toward
+// SOFT_CLIP_KNEE + (1 - SOFT_CLIP_KNEE) * tanh(1), so the output never reaches full scale.
+export function softClip(x: number): number {
+  const level = Math.abs(x);
+  if (level <= SOFT_CLIP_KNEE) return x;
+  const room = 1 - SOFT_CLIP_KNEE;
+  return Math.sign(x) * (SOFT_CLIP_KNEE + room * Math.tanh((Math.min(level, 1) - SOFT_CLIP_KNEE) / room));
+}
+
+// Gain for headroom, a fast limiter for peaks, then a soft clipper for anything
+// the limiter's attack lets through.
+export function createMasterBus(ctx: BaseAudioContext): AudioNode {
+  const gain = ctx.createGain();
+  gain.gain.value = MASTER_GAIN;
+  const limiter = ctx.createDynamicsCompressor();
+  limiter.threshold.value = -6;
+  limiter.knee.value = 0;
+  limiter.ratio.value = 20;
+  limiter.attack.value = 0.001;
+  limiter.release.value = 0.1;
+  const clipper = ctx.createWaveShaper();
+  clipper.curve = Float32Array.from({ length: SOFT_CLIP_CURVE_POINTS }, (_, i) =>
+    softClip((i / (SOFT_CLIP_CURVE_POINTS - 1)) * 2 - 1),
+  );
+  clipper.oversample = "4x";
+  const trim = ctx.createGain();
+  trim.gain.value = MASTER_OUTPUT_TRIM;
+  gain.connect(limiter).connect(clipper).connect(trim).connect(ctx.destination);
+  return gain;
+}
+
 export interface WebAudioSink extends AudioSink {
   voices: VoiceFactory | null;
 }
@@ -31,6 +72,7 @@ export async function createWebAudioSink(
     }),
   );
 
+  const master = createMasterBus(ctx);
   const active = new Set<AudioScheduledSourceNode>();
   const track = (source: AudioScheduledSourceNode) => {
     active.add(source);
@@ -48,13 +90,13 @@ export async function createWebAudioSink(
       gain.gain.value = velocity;
       const panner = ctx.createStereoPanner();
       panner.pan.value = pan;
-      source.connect(gain).connect(panner).connect(ctx.destination);
+      source.connect(gain).connect(panner).connect(master);
       track(source);
       source.start(time);
     },
     playNote(note, instrument, time, duration, velocity, pan) {
       if (!this.voices) return;
-      for (const source of this.voices.playNote(ctx, ctx.destination, note, instrument, time, duration, velocity, pan)) {
+      for (const source of this.voices.playNote(ctx, master, note, instrument, time, duration, velocity, pan)) {
         track(source);
       }
     },
