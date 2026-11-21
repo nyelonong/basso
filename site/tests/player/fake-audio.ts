@@ -75,6 +75,19 @@ export class FakeIIR extends FakeNode {
   }
 }
 
+export class FakeCompressor extends FakeNode {
+  threshold = new FakeParam();
+  knee = new FakeParam();
+  ratio = new FakeParam();
+  attack = new FakeParam();
+  release = new FakeParam();
+}
+
+export class FakeShaper extends FakeNode {
+  curve: Float32Array | null = null;
+  oversample = "none";
+}
+
 export class FakeBuffer {
   constructor(
     readonly numberOfChannels: number,
@@ -114,6 +127,12 @@ export class FakeContext {
   }
   createIIRFilter(feedforward: number[], feedback: number[]) {
     return this.add(new FakeIIR(this, feedforward, feedback));
+  }
+  createDynamicsCompressor() {
+    return this.add(new FakeCompressor("compressor", this));
+  }
+  createWaveShaper() {
+    return this.add(new FakeShaper("shaper", this));
   }
   createBuffer(channels: number, length: number, sampleRate: number) {
     return new FakeBuffer(channels, length, sampleRate);

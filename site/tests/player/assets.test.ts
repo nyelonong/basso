@@ -9,9 +9,9 @@ const repo = resolve(import.meta.dirname, "../../..");
 const wavs = readdirSync(resolve(repo, "sound/808")).filter((f) => f.endsWith(".wav")).sort();
 
 describe("player assets", () => {
-  it("lists every bundled 808 sample", () => {
+  it("lists every bundled sample", () => {
     expect(SAMPLE_NAMES).toEqual(wavs);
-    expect(SAMPLE_NAMES).toHaveLength(15);
+    expect(SAMPLE_NAMES).toHaveLength(25);
   });
 
   it("gives each sample a URL", () => {
